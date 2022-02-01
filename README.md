@@ -21,3 +21,10 @@ As shown earlier, this community is not stable. I expect that the trained microb
 
 Pay attention to the following diagram describing this step 
 
+![Drag Racing](./overall.png)
+
+Every state-action value will be evaluated for each policy using Monte Carlo Method. Return wou;d be the sum of a an agent concentration from that time until the end of that episode, maybe discounted or not. Policy improvement will be started after the returns are convegred to a good degree. The final optimal policy will be outputed
+
+## Step 4: Data Analysis
+
+Trained Agents will be tested in a community of two, and the profiles will be compared to see if RL has been successfull.
