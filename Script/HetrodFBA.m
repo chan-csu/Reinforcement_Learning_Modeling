@@ -27,7 +27,7 @@ if length(Inlet_cond)~=Number_of_ODEs
     disp('Number of inlet conditions is not equal to the number of "species" inside the reactor!');
     return
 end
-changeCobraSolver('ibm_cplex','all')
+changeCobraSolver('gurobi','all')
 dil_rate=0.1;
 
 global Data
@@ -53,7 +53,6 @@ end
 
 
 c=HeterodFBA(Models,Initial_cond,Inlet_cond,dil_rate)
-dbstop if error
 function [Concentration]=HeterodFBA(Models,Initial_cond,Inlet_cond,dil_rate,death)
 tic
 t=[0,600]
