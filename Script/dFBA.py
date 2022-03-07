@@ -8,7 +8,7 @@ import os
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Number_Of_Models):
+def main():
     pass
 
 
