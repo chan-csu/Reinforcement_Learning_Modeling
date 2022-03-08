@@ -9,8 +9,15 @@ Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
-    pass
-
+    Number_of_Models = 2
+    Models=[]
+    Main_dir = os.path.dirname(os.path.abspath(__file__))
+    Base_Model = cobra.io.read_sbml_model(Main_dir+'/IJO1366_AP.xml')
+    [Models.append(Base_Model.copy()) for i in range(Number_of_Models)]
+    for i in range(Number_of_Models):
+        Models[i].name = "Ecoli_"+str(i+1)
+    
+    dFBA(Models, Init_C, Inlet_C)
 
 def dFBA(Models, Init_C, Inlet_C):
     """
@@ -18,7 +25,31 @@ def dFBA(Models, Init_C, Inlet_C):
     Models is a list of COBRA Model objects
     NOTE: this implementation of DFBA is compatible with RL framework
     Given a policy it will genrate episodes. Policies can be either deterministic or stochastic
+
+    Differential Equations Are Formatted as follows:
+
+    [0]-Models[1]
+    [1]-Models[2]
+    []-...
+    [n-1]-Models[n]
+    [n]-Exc[1]
+    [n+1]-Exc[2]
+    []-...
+    [n+m-1]-Exc[m]
     """
+def Build_Mapping_Matrix(Models):
+    Ex_sp=[]
+    [Ex_sp.append(Model.name) for Model in Models]
+    for model in Models:
+        for Ex_rxn in model.exchanges:
+            if Ex_rxn.id not in Ex_sp:
+                Ex_sp.append(Ex_rxn.id)
+    for model in Models:
+        
+
+
+    
+
 
 
 class Policy:
