@@ -10,36 +10,48 @@ import scipy
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Number_of_Models: int = 2,max_time: int = 100):
+def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
     that the models use the same notation for the 
     same reactions.
-    
-    
+
+
     """
-    
-    Models=[]
+
+    Models = []
     Main_dir = os.path.dirname(os.path.abspath(__file__))
-    Base_Model = cobra.io.read_sbml_model(Main_dir+'/IJO1366_AP.xml')
+    Base_Model = cobra.io.read_sbml_model(
+        os.path.join(Main_dir, 'IJO1366_AP.xml'))
     [Models.append(Base_Model.copy()) for i in range(Number_of_Models)]
-    
+
     for i in range(Number_of_Models):
         Models[i].name = "Ecoli_"+str(i+1)
-    
-    Mapping_Dict=Build_Mapping_Matrix(Models)
-    Init_C=[]
-    Inlet_C=[]
-    Params={}
+
+    Mapping_Dict = Build_Mapping_Matrix(Models)
+    Init_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__(), 1))
+    Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__(), 1))
+
+    Params = {
+        "Dilution_Rate": Dil_Rate,
+        "Glucose_Index": None,
+        "Starch_Index": None,
+
+
+    }
+
     ############################
     # Initial Policy Placeholder
     ############################
-    Opt_Policy=Find_Optimal_Policy(Models,Mapping_Dict,ICs,Params,Initial_Policy)
+    Opt_Policy = Find_Optimal_Policy(
+        Models, Mapping_Dict, ICs, Params, Initial_Policy)
     ############################
     # Saving the policy with pickle place holder
     ############################
-def dFBA(Models,Mapping_Dict,Pol, Init_C, Inlet_C):
+
+
+def dFBA(Models, Mapping_Dict, Pol, Init_C, Inlet_C):
     """
     Main function for running Dynamic Flux Balance Analysis (dFBA)
     Models is a list of COBRA Model objects
@@ -56,33 +68,40 @@ def dFBA(Models,Mapping_Dict,Pol, Init_C, Inlet_C):
     [n+1]-Exc[2]
     []-...
     [n+m-1]-Exc[m]
+    [n+m]-Starch
     """
+
+
+def Find_Optimal_Policy(Models, Mapping_Dict, ICs, Params):
     pass
 
-
-
-def Find_Optimal_Policy(Models,Mapping_Dict,ICs,Params):
-    pass
 
 def Generate_Episode():
     pass
 
+
 def Build_Mapping_Matrix(Models):
-    Ex_sp=[]
+    """
+    Given a list of COBRA model objects, this function will build a mapping matrix
+
+    """
+
+    Ex_sp = []
     for model in Models:
         for Ex_rxn in model.exchanges:
             if Ex_rxn.id not in Ex_sp:
                 Ex_sp.append(Ex_rxn.id)
-    Mapping_Matrix = np.zeros((len(Ex_sp),len(Models)),dtype=int)
-    for i,id in enumerate(Ex_sp):
-        for j,model in enumerate(Models):
+    Mapping_Matrix = np.zeros((len(Ex_sp), len(Models)), dtype=int)
+    for i, id in enumerate(Ex_sp):
+        for j, model in enumerate(Models):
             if id in model.reactions:
-                Mapping_Matrix[i,j]=model.reactions.index(id)
+                Mapping_Matrix[i, j] = model.reactions.index(id)
             else:
-                Mapping_Matrix[i,j]=-1
-    return {"Ex_sp":Ex_sp, "Mapping_Matrix":Mapping_Matrix, "Models":Models}
-    
-def Build_ODE_System(Models,Mapping_Dict):
+                Mapping_Matrix[i, j] = -1
+    return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix, "Models": Models}
+
+
+def Build_ODE_System(Models, Mapping_Dict):
     pass
 
 
@@ -104,10 +123,38 @@ class Policy:
 
 if __name__ == "__main__":
     main()
- 
- 
- 
- 
- ## SCRATCH PAPER
+
+ # SCRATCH PAPER
 #  Solution=scipy.integrate.solve_ivp(ODE_Sys, (0, 10),  ICs, t_eval=np.linspace(
 #     0, 10, num=1000), method='Radau', args=[Params])
+
+
+def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model=""):
+    """
+    This function calculates the rate of degradation of starch
+    a_Amylase Unit: mmol
+    Starch Unit: mg
+
+    """
+    if Model == "Ecoli":
+        return a_Amylase*Starch
+
+
+def Glucose_Uptake_Kinetics(Glucose: float, Model=""):
+    """
+    This function calculates the rate of glucose uptake
+    ###It is just a simple imaginary model: Replace it with better model if necessary###
+    Glucose Unit: mmol
+
+    """
+    return -20*(Glucose/(Glucose+20))
+
+
+def General_Uptake_Kinetics(Compound: float, Model=""):
+    """
+    This function calculates the rate of uptake of a compound in the reactor
+    ###It is just a simple imaginary model: Replace it with better model if necessary###
+    Compound Unit: mmol
+
+    """
+    return -100*(Compound/(Compound+20))
