@@ -70,6 +70,16 @@ def dFBA(Models, Mapping_Dict, Pol, Init_C, Inlet_C):
     [n+m-1]-Exc[m]
     [n+m]-Starch
     """
+    for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
+        for i, model in enumerate(Models):
+            if Mapping_Dict["Mapping_Matrix"][j, i] != model.Glc_Index:
+                Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
+                                    ].lower_bound = General_Uptake_Kinetics(C[j+Models.__len__()-1])
+            else:
+                Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
+                                    ].lower_bound = Glucose_Uptake_Kinetics(C[j])
+
+            Models[i].optimize()
 
 
 def Find_Optimal_Policy(Models, Mapping_Dict, ICs, Params):
@@ -121,14 +131,6 @@ class Policy:
         np.random.choice(Actions, p=[action[1] for action in Actions], k=1)
 
 
-if __name__ == "__main__":
-    main()
-
- # SCRATCH PAPER
-#  Solution=scipy.integrate.solve_ivp(ODE_Sys, (0, 10),  ICs, t_eval=np.linspace(
-#     0, 10, num=1000), method='Radau', args=[Params])
-
-
 def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model=""):
     """
     This function calculates the rate of degradation of starch
@@ -158,3 +160,11 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
 
     """
     return -100*(Compound/(Compound+20))
+
+
+if __name__ == "__main__":
+    main()
+
+ # SCRATCH PAPER
+#  Solution=scipy.integrate.solve_ivp(ODE_Sys, (0, 10),  ICs, t_eval=np.linspace(
+#     0, 10, num=1000), method='Radau', args=[Params])
