@@ -9,7 +9,6 @@ import scipy
 
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
-
 def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1):
     """
     This is the main function for running dFBA.
@@ -20,8 +19,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1):
 
     """
 
-    Models = []
-    Main_dir = os.path.dirname(os.path.abspath(__file__))
+    Models = []  
     Base_Model = cobra.io.read_sbml_model(
         os.path.join(Main_dir, 'IJO1366_AP.xml'))
     [Models.append(Base_Model.copy()) for i in range(Number_of_Models)]
@@ -30,36 +28,61 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1):
         Models[i].name = "Ecoli_"+str(i+1)
 
     Mapping_Dict = Build_Mapping_Matrix(Models)
-    Init_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__(), 1))
-    Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__(), 1))
+    Init_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1, 1))
+    Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1, 1))
+
+    ##The Params are the main part to change from problem to problem
 
     Params = {
         "Dilution_Rate": Dil_Rate,
-        "Glucose_Index": None,
-        "Starch_Index": None,
-
-
+        "Glucose_Index": Mapping_Dict["Ex_sp"].index("EX_glc__D(e)")+Models.__len__()+Models.__len__(),
+        "Starch_Index": Mapping_Dict["Ex_sp"].__len__()+Models.__len__(),
+        "Amylase_Ind": Mapping_Dict["Ex_sp"].index("EX_amylase(e)")+Models.__len__(),
+        "Inlet_C": Inlet_C
     }
+
+    Conc=dFBA(Models, Mapping_Dict, Init_C, Params)
 
     ############################
     # Initial Policy Placeholder
     ############################
-    Opt_Policy = Find_Optimal_Policy(
-        Models, Mapping_Dict, ICs, Params, Initial_Policy)
+
     ############################
     # Saving the policy with pickle place holder
     ############################
 
 
-def dFBA(Models, Mapping_Dict, Pol, Init_C, Inlet_C):
+def dFBA(Models, Mapping_Dict, Init_C,Params):
     """
-    Main function for running Dynamic Flux Balance Analysis (dFBA)
+    This function calculates the concentration of each species
+    Models is a list of COBRA Model objects
+    Mapping_Dict is a dictionary of dictionaries
+    """
+    ##############################################################
+    # Initializing the ODE Solver
+    ##############################################################
+    t = np.linspace(0, 100, 100)
+    C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1, t.__len__()))
+    C[:, 0] = Init_C
+    ICs = C[:, 0]
+    ##############################################################
+    # Solving the ODE
+    ##############################################################
+    sol = scipy.integrate.solve_ivp(
+        fun=ODE_System, t_span=[0, 100], y0=C[:, 0], args=(Models, Mapping_Dict, Params), method="RK45", t_eval=t)
+    C = sol.y
+    return C
+
+
+
+def ODE_System(t, C, Models, Mapping_Dict, Params):
+
+    """
+    This function calculates the differential equations for the system
     Models is a list of COBRA Model objects
     NOTE: this implementation of DFBA is compatible with RL framework
     Given a policy it will genrate episodes. Policies can be either deterministic or stochastic
-
     Differential Equations Are Formatted as follows:
-
     [0]-Models[1]
     [1]-Models[2]
     []-...
@@ -69,12 +92,6 @@ def dFBA(Models, Mapping_Dict, Pol, Init_C, Inlet_C):
     []-...
     [n+m-1]-Exc[m]
     [n+m]-Starch
-    """
-
-
-def ODE_System(t, C, Models, Mapping_Dict, Params):
-    """
-    This function calculates the differential equations for the system
     """
     dCdt = np.zeros(C.shape)
     for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
@@ -98,7 +115,10 @@ def ODE_System(t, C, Models, Mapping_Dict, Params):
                 dCdt[i+Models.__len__()] += Models[j].reactions[Mapping_Dict["Mapping_Matrix"]
                                       [i, j]].x*C[i+Models.__len__()]
 
-    dCdt[Models.__len__()+Mapping_Dict["Mapping_Matrix"].shape[0]] = Starch_Degradation_Kinetics(
+    dCdt[C.__len__()-1] =- Starch_Degradation_Kinetics(C[Params["Amylase"]],C[C.__len__()-1])
+
+    dCdt+=np.matmul(Params["Dilution_Rate"],(Params["Inlet_C"]-C))
+
     return dCdt
 
 
@@ -151,15 +171,15 @@ class Policy:
         np.random.choice(Actions, p=[action[1] for action in Actions], k=1)
 
 
-def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model=""):
+def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="",k: float=0.1):
     """
     This function calculates the rate of degradation of starch
     a_Amylase Unit: mmol
     Starch Unit: mg
 
     """
-    if Model == "Ecoli":
-        return a_Amylase*Starch
+    
+    return a_Amylase*Starch*k
 
 
 def Glucose_Uptake_Kinetics(Glucose: float, Model=""):
