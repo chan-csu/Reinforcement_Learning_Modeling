@@ -62,14 +62,11 @@ def dFBA(Models, Mapping_Dict, Init_C,Params):
     # Initializing the ODE Solver
     ##############################################################
     t = np.linspace(0, 100, 100)
-    C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1, t.__len__()))
-    C[:, 0] = Init_C
-    ICs = C[:, 0]
     ##############################################################
     # Solving the ODE
     ##############################################################
     sol = scipy.integrate.solve_ivp(
-        fun=ODE_System, t_span=[0, 100], y0=C[:, 0], args=(Models, Mapping_Dict, Params), method="RK45", t_eval=t)
+        fun=ODE_System, t_span=[0, 100], y0=Init_C, args=(Models, Mapping_Dict, Params), method="RK45", t_eval=t)
     C = sol.y
     return C
 
@@ -115,7 +112,7 @@ def ODE_System(t, C, Models, Mapping_Dict, Params):
                 dCdt[i+Models.__len__()] += Models[j].reactions[Mapping_Dict["Mapping_Matrix"]
                                       [i, j]].x*C[i+Models.__len__()]
 
-    dCdt[C.__len__()-1] =- Starch_Degradation_Kinetics(C[Params["Amylase"]],C[C.__len__()-1])
+    dCdt[C.__len__()-1] =- Starch_Degradation_Kinetics(C[Params["Amylase"]],C[Params["Starch_Index"]])
 
     dCdt+=np.matmul(Params["Dilution_Rate"],(Params["Inlet_C"]-C))
 
