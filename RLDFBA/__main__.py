@@ -9,6 +9,8 @@ from scipy.integrate import solve_ivp
 from scipy.integrate import odeint
 import random
 import matplotlib.pyplot as plt
+import plotext as plt
+
 
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -53,7 +55,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.000
     }
 
     Init_C[[Params["Glucose_Index"],
-            Params["Starch_Index"], Params["Amylase_Ind"]]] = 100
+            Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
 
@@ -147,6 +149,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
             if Mapping_Dict["Mapping_Matrix"][i, j] != -1:
                 dCdt[i+Models.__len__()] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                 [i, j]]*C[j]
+            if Mapping_Dict["Ex_sp"][i] == "EX_glc__D(e)":
+                dCdt[i+Models.__len__()] += Starch_Degradation_Kinetics(
+                    C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
 
     dCdt[Params["Starch_Index"]] = - \
         Starch_Degradation_Kinetics(
@@ -210,7 +215,7 @@ class Policy_General:
         np.random.choice(Actions, p=[action[1] for action in Actions], k=1)
 
 
-def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 0.1):
+def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 0.001):
     """
     This function calculates the rate of degradation of starch
     a_Amylase Unit: mmol
