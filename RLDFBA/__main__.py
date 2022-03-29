@@ -9,13 +9,13 @@ from scipy.integrate import solve_ivp
 from scipy.integrate import odeint
 import random
 import matplotlib.pyplot as plt
-import plotext as plt
+# import plotext as plx
 
 
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.000001):
+def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -56,6 +56,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.000
 
     Init_C[[Params["Glucose_Index"],
             Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
+    Inlet_C[Params["Starch_Index"]]=1
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
 
@@ -269,6 +270,15 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
         sol[i] = sol[i-1] + \
             ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict, Params)*dt
     return sol, t
+
+def Generate_Episodes_With_State(dFBA,Policy,Params,Models,Mapping_Dict,Num_Episodes=10000,Gamma=1):
+    Episode = []
+    Episode.append(State)
+    for i in range(Params["Episode_Length"]):
+        Episode.append(dFBA(Episode[i],Episode[i+1],Models,Mapping_Dict,Params))
+    return Episode
+
+
 
 
 if __name__ == "__main__":
