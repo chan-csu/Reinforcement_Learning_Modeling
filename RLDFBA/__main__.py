@@ -5,7 +5,7 @@
 import numpy as np
 import cobra
 import os
-import scipy
+from scipy.integrate import solve_ivp
 
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -28,8 +28,8 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1):
         Models[i].name = "Ecoli_"+str(i+1)
 
     Mapping_Dict = Build_Mapping_Matrix(Models)
-    Init_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1, 1))
-    Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1, 1))
+    Init_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))
+    Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1, ))
 
     ##The Params are the main part to change from problem to problem
 
@@ -38,8 +38,26 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1):
         "Glucose_Index": Mapping_Dict["Ex_sp"].index("EX_glc__D(e)")+Models.__len__()+Models.__len__(),
         "Starch_Index": Mapping_Dict["Ex_sp"].__len__()+Models.__len__(),
         "Amylase_Ind": Mapping_Dict["Ex_sp"].index("EX_amylase(e)")+Models.__len__(),
-        "Inlet_C": Inlet_C
+        "Inlet_C": Inlet_C,
+        "Model_Glc_Conc_Index": [Models[i].reactions.index("EX_glc__D(e)") for i in range(Number_of_Models)],
+        "Num_Glucose_States":10,
+        "Num_Starch_States":10,
+        "Num_Amylase_States":10
+
     }
+
+    ### Policy initialization
+    ### Initial Policy is set to a random policy
+    Init_Policy_Dict={}
+    States=[(i,j,k) for i in range(Params["Num_Glucose_States"]) for j in range(Params["Num_Starch_States"]) for k in range(Params["Num_Amylase_States"])]
+    for state in States:
+        Init_Policy_Dict[state]=
+    for i in range(Number_of_Models):
+        Models[i].Policy=Policy()
+
+
+
+
 
     Conc=dFBA(Models, Mapping_Dict, Init_C, Params)
 
@@ -65,7 +83,7 @@ def dFBA(Models, Mapping_Dict, Init_C,Params):
     ##############################################################
     # Solving the ODE
     ##############################################################
-    sol = scipy.integrate.solve_ivp(
+    sol = solve_ivp(
         fun=ODE_System, t_span=[0, 100], y0=Init_C, args=(Models, Mapping_Dict, Params), method="RK45", t_eval=t)
     C = sol.y
     return C
@@ -91,16 +109,20 @@ def ODE_System(t, C, Models, Mapping_Dict, Params):
     [n+m]-Starch
     """
     dCdt = np.zeros(C.shape)
+
+    for i in range(Models.__len__()):
+        Models[i].State = (C[Params["Glucose_Index"]], C[Params["Starch_Index"]], C[Params["Amylase_Ind"]])
+
     for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
-        for i, model in enumerate(Models):
-            if Mapping_Dict["Mapping_Matrix"][j, i] != model.Glc_Index:
+        for i in range(Models.__len__()):
+            if Mapping_Dict["Mapping_Matrix"][j, i] != Params["Model_Glc_Conc_Index"][i]:
                 Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
                                     ].upper_bound = General_Uptake_Kinetics(C[j+Models.__len__()-1])
             else:
                 Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
                                     ].upper_bound = Glucose_Uptake_Kinetics(C[j])
             Models[i].reactions[Params["Amylase_Ind"]
-                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy[(C(Params["Glucose_Index"]), C(Params["Starch_Index"]))], 5)
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy[], 5)
 
     for i in range(Models.__len__()):
         Models[i].optimize()
@@ -112,7 +134,7 @@ def ODE_System(t, C, Models, Mapping_Dict, Params):
                 dCdt[i+Models.__len__()] += Models[j].reactions[Mapping_Dict["Mapping_Matrix"]
                                       [i, j]].x*C[i+Models.__len__()]
 
-    dCdt[C.__len__()-1] =- Starch_Degradation_Kinetics(C[Params["Amylase"]],C[Params["Starch_Index"]])
+    dCdt[Params["Starch_Index"]] =- Starch_Degradation_Kinetics(C[Params["Amylase"]],C[Params["Starch_Index"]])
 
     dCdt+=np.matmul(Params["Dilution_Rate"],(Params["Inlet_C"]-C))
 
