@@ -9,6 +9,8 @@ from scipy.integrate import solve_ivp
 from scipy.integrate import odeint
 import random
 import matplotlib.pyplot as plt
+import numpy as np
+import math
 # import plotext as plx
 
 
@@ -50,13 +52,19 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
         "Model_Amylase_Conc_Index": [Models[i].reactions.index("EX_amylase(e)") for i in range(Number_of_Models)],
         "Num_Glucose_States": 10,
         "Num_Starch_States": 10,
-        "Num_Amylase_States": 10
+        "Num_Amylase_States": 10,
+        "Glc_Max_C": 100,
+        "Starch_Max_C": 10,
+        "Amylase_Max_C": 10,
+
 
     }
 
     Init_C[[Params["Glucose_Index"],
             Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
-    Inlet_C[Params["Starch_Index"]]=1
+    Inlet_C[Params["Starch_Index"]] = 1
+    Params["Inlet_C"] = Inlet_C
+
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
 
@@ -125,7 +133,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
 
     for i in range(Models.__len__()):
         Models[i].State = Descretize_Concs(
-            C[Params["Glucose_Index"]], C[Params["Starch_Index"]], C[Params["Amylase_Ind"]])
+            C[Params["Glucose_Index"]], C[Params["Starch_Index"]], C[Params["Amylase_Ind"]], Params)
 
     for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
         for i in range(Models.__len__()):
@@ -142,6 +150,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
                             [i]].lower_bound = (lambda x, a: a*x/100)(Models[i].Policy.get_action(Models[i].State), 5)
 
     for i in range(Models.__len__()):
+        if t == 0:
+            Models[i].reactions[Params["Model_Amylase_Conc_Index"]
+                                [i]].lower_bound = (lambda x, a: a*x/100)(Models[i].InitAction, 1)
         Sols[i] = Models[i].optimize()
         dCdt[i] += Sols[i].objective_value*C[i]
 
@@ -247,16 +258,22 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     return 100*(Compound/(Compound+20))
 
 
-def Descretize_Concs(Glucose: float, Starch: float, Amylase: float):
+def Descretize_Concs(Glucose: float, Starch: float, Amylase: float, Params):
     """
     This function calculates the state of the reactor
 
 
     """
 
-    Glucose = np.digitize(Glucose, range(9))
-    Starch = np.digitize(Starch, range(9))
-    Amylase = np.digitize(Amylase, range(9))
+    Glucose = math.floor(Glucose/Params["Glc_Max_C"])*10
+    Starch = math.floor(Starch/Params["Starch_Max_C"])*10
+    Amylase = math.floor(Amylase/Params["Amylase_Max_C"])*10
+    if Glucose >= Params["Glc_Max_C"]:
+        Glucose = 9
+    if Starch >= Params["Starch_Max_C"]:
+        Starch = 9
+    if Amylase >= Params["Amylase_Max_C"]:
+        Amylase = 0
 
     return (Glucose, Starch, Amylase)
 
@@ -271,14 +288,25 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
             ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict, Params)*dt
     return sol, t
 
-def Generate_Episodes_With_State(dFBA,Policy,Params,Models,Mapping_Dict,Num_Episodes=10000,Gamma=1):
-    Episode = []
-    Episode.append(State)
-    for i in range(Params["Episode_Length"]):
-        Episode.append(dFBA(Episode[i],Episode[i+1],Models,Mapping_Dict,Params))
-    return Episode
 
+def Generate_Episodes_With_State(dFBA, State, Action, Params, Init_C, Models, Mapping_Dict, Num_Episodes=10, Gamma=1):
+    Returns = {}
+    for i in range(Models.__len__()):
+        Returns[i] = []
+        Models[i].InitAction = Action
+    Init_C[[Params["Glucose_Index"],
+            Params["Starch_Index"],
+            Params["Amylase_Ind"]]] = [random.random.uniform(State[0]*Params["Glc_Max_C"], (State[0]+1)*Params["Glc_Max_C"]),
+                                       random.random.uniform(
+                                           State[1]*Params["Starch_Max_C"], ((State[1]+1)*Params["Starch_Max_C"])),
+                                       random(State[2]*Params["Amylase_Max_C"], ((State[2]+1)*Params["Amylase_Max_C"]))]
+    for i in range(Num_Episodes):
+        C, _ = dFBA(Models, Mapping_Dict, Init_C, Params)
 
+    for i in range(Models.__len__()):
+        Returns[i] = C[1:, i]  # No GAMMA for now
+
+    return Returns
 
 
 if __name__ == "__main__":
