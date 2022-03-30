@@ -5,6 +5,7 @@
 import numpy as np
 import cobra
 import os
+from pyrsistent import T
 from scipy.integrate import solve_ivp
 from scipy.integrate import odeint
 import random
@@ -78,8 +79,10 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
 
     for i in range(Number_of_Models):
         Models[i].Policy = Policy_Deterministic(Init_Policy_Dict)
-
-    Conc, t = dFBA(Models, Mapping_Dict, Init_C, Params)
+    for state in States:
+        for t in Params["Num_Amylase_States"]:
+            Generate_Episodes_With_State(
+                dFBA, state, t, Params, Init_C, Models, Mapping_Dict, Num_Episodes=10, Gamma=1)
     for i in range(Number_of_Models):
         plt.plot(t, Conc[:, i])
     for species in ["Glucose_Index", "Starch_Index", "Amylase_Ind"]:
@@ -289,22 +292,26 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
     return sol, t
 
 
-def Generate_Episodes_With_State(dFBA, State, Action, Params, Init_C, Models, Mapping_Dict, Num_Episodes=10, Gamma=1):
+def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, Num_Episodes=10, Gamma=1):
+
     Returns = {}
     for i in range(Models.__len__()):
         Returns[i] = []
-        Models[i].InitAction = Action
-    Init_C[[Params["Glucose_Index"],
-            Params["Starch_Index"],
-            Params["Amylase_Ind"]]] = [random.random.uniform(State[0]*Params["Glc_Max_C"], (State[0]+1)*Params["Glc_Max_C"]),
-                                       random.random.uniform(
-                                           State[1]*Params["Starch_Max_C"], ((State[1]+1)*Params["Starch_Max_C"])),
-                                       random(State[2]*Params["Amylase_Max_C"], ((State[2]+1)*Params["Amylase_Max_C"]))]
-    for i in range(Num_Episodes):
-        C, _ = dFBA(Models, Mapping_Dict, Init_C, Params)
 
-    for i in range(Models.__len__()):
-        Returns[i] = C[1:, i]  # No GAMMA for now
+    for k in range(Num_Episodes):
+        Init_C[[Params["Glucose_Index"],
+                Params["Starch_Index"],
+                Params["Amylase_Ind"]]] = [random.random.uniform(0, Params["Glc_Max_C"]),
+                                           random.random.uniform(
+                                           0, Params["Starch_Max_C"]),
+                                           random.random.uniform(0, Params["Amylase_Max_C"])]
+        for i in range(Models.__len__()):
+            Models[i].InitAction = random.choice(
+                range(Params["Num_Amylase_States"]))
+
+        C, _ = dFBA(Models, Mapping_Dict, Init_C, Params)
+        for j in range(Models.__len__()):
+            Returns[j].append(np.average(C[1:, j]))  # No GAMMA for now
 
     return Returns
 
