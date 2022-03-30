@@ -5,9 +5,6 @@
 import numpy as np
 import cobra
 import os
-from pyrsistent import T
-from scipy.integrate import solve_ivp
-from scipy.integrate import odeint
 import random
 import matplotlib.pyplot as plt
 import numpy as np
@@ -79,17 +76,10 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
 
     for i in range(Number_of_Models):
         Models[i].Policy = Policy_Deterministic(Init_Policy_Dict)
-    for state in States:
-        for t in Params["Num_Amylase_States"]:
-            Generate_Episodes_With_State(
-                dFBA, state, t, Params, Init_C, Models, Mapping_Dict, Num_Episodes=10, Gamma=1)
-    for i in range(Number_of_Models):
-        plt.plot(t, Conc[:, i])
-    for species in ["Glucose_Index", "Starch_Index", "Amylase_Ind"]:
-        plt.plot(t, Conc[:, Params[species]])
-    plt.show()
-    print(Conc)
 
+    Returns=Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, Num_Episodes=10, Gamma=1)
+
+    print(Returns)
     ############################
     # Saving the policy with pickle place holder
     ############################
@@ -101,6 +91,9 @@ def dFBA(Models, Mapping_Dict, Init_C, Params):
     Models is a list of COBRA Model objects
     Mapping_Dict is a dictionary of dictionaries
     """
+
+
+
     ##############################################################
     # Initializing the ODE Solver
     ##############################################################
@@ -109,12 +102,15 @@ def dFBA(Models, Mapping_Dict, Init_C, Params):
     # Solving the ODE
     ##############################################################
 
-    sol, t = odeFwdEuler(ODE_System, Init_C, 0.1,  Params,
-                         [0, 100], Models, Mapping_Dict)
+    States=[0]*t.__len__()
+    Actions=[[0]*Models.__len__()]*t.__len__()
+
+    sol, t,States,Actions = odeFwdEuler(ODE_System, Init_C, 0.1,  Params,
+                         [0, 100], Models, Mapping_Dict,States,Actions)
     return sol, t
 
 
-def ODE_System(C, t, Models, Mapping_Dict, Params):
+def ODE_System(C, t, Models, Mapping_Dict, Params,States,Actions,Integrator_Counter):
     """
     This function calculates the differential equations for the system
     Models is a list of COBRA Model objects
@@ -156,6 +152,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
         if t == 0:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x/100)(Models[i].InitAction, 1)
+            Actions[i,0]=Models[i].InitAction
         Sols[i] = Models[i].optimize()
         dCdt[i] += Sols[i].objective_value*C[i]
 
@@ -174,6 +171,10 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     print(t)
+    for i in range(Models.__len__()):
+        if t!=0:
+            Actions[i,Integrator_Counter]=Models[i].Policy[Models[i].State]
+    States[0,Integrator_Counter]=Models[0].State
     return dCdt
 
 
@@ -281,14 +282,15 @@ def Descretize_Concs(Glucose: float, Starch: float, Amylase: float, Params):
     return (Glucose, Starch, Amylase)
 
 
-def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
-
+def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict,States,Actions):
+    Integrator_Counter=0
     t = np.arange(t_span[0], t_span[1], dt)
     sol = np.zeros((len(t), len(ICs)))
     sol[0] = ICs
     for i in range(1, len(t)):
         sol[i] = sol[i-1] + \
-            ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict, Params)*dt
+            ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict, Params,States,Actions,Integrator_Counter)*dt
+        Integrator_Counter+=1
     return sol, t
 
 
@@ -301,10 +303,10 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, Num
     for k in range(Num_Episodes):
         Init_C[[Params["Glucose_Index"],
                 Params["Starch_Index"],
-                Params["Amylase_Ind"]]] = [random.random.uniform(0, Params["Glc_Max_C"]),
-                                           random.random.uniform(
-                                           0, Params["Starch_Max_C"]),
-                                           random.random.uniform(0, Params["Amylase_Max_C"])]
+                Params["Amylase_Ind"]]] = [random.uniform(0, Params["Glc_Max_C"]*1.1),
+                                           random.uniform(0, Params["Starch_Max_C"]*1.1),
+                                           random.uniform(0, Params["Amylase_Max_C"]*1.1)]
+
         for i in range(Models.__len__()):
             Models[i].InitAction = random.choice(
                 range(Params["Num_Amylase_States"]))
