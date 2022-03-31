@@ -11,6 +11,9 @@ import numpy as np
 import math
 import cProfile
 import pstats
+import concurrent.futures
+import multiprocessing
+CORES=multiprocessing.cpu_count()
 
 # import plotext as plx
 
@@ -80,7 +83,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
     for i in range(Number_of_Models):
         Models[i].Policy = Policy_Deterministic(Init_Policy_Dict)
 
-    Returns=Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, Num_Episodes=2, Gamma=1)
+    Returns=Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict,[0,10], Num_Episodes=2, Gamma=1)
 
     print(Returns)
     ############################
@@ -88,7 +91,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
     ############################
 
 
-def dFBA(Models, Mapping_Dict, Init_C, Params,dt=0.1):
+def dFBA(Models, Mapping_Dict, Init_C, Params,t_span,dt=0.1):
     """
     This function calculates the concentration of each species
     Models is a list of COBRA Model objects
@@ -100,13 +103,15 @@ def dFBA(Models, Mapping_Dict, Init_C, Params,dt=0.1):
     ##############################################################
     # Initializing the ODE Solver
     ##############################################################
-    t = np.arange(0, 100, dt)
+    t = np.arange(t_span[0], t_span[1], dt)
     ##############################################################
     # Solving the ODE
     ##############################################################
 
-    States=[0]*t.__len__()
-    Actions=[[0]*Models.__len__()]*t.__len__()
+    States=[]
+    [States.append(0) for i in range(t.__len__())]
+    Actions=[]
+    [Actions.append([0,0]) for i in range(t.__len__())]
 
     sol, t = odeFwdEuler(ODE_System, Init_C, 0.1,  Params,
                          [0, 10], Models, Mapping_Dict,States,Actions)
@@ -297,13 +302,13 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict,Stat
     return sol, t
 
 
-def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, Num_Episodes=2, Gamma=1):
-
-    Returns = {}
-    for i in range(Models.__len__()):
-        Returns[i] = []
+def Generate_Episodes_With_State(dFBA,States, Params, Init_C, Models, Mapping_Dict,t_span=[0,100], Num_Episodes=2, Gamma=1):
+    Returns_Totall={}
+    for state in States:
+        Returns_Totall[state]=[[0]]
 
     for k in range(Num_Episodes):
+        Returns={}
         Init_C[[Params["Glucose_Index"],
                 Params["Starch_Index"],
                 Params["Amylase_Ind"]]] = [random.uniform(0, Params["Glc_Max_C"]*1.1),
@@ -314,7 +319,8 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, Num
             Models[i].InitAction = random.choice(
                 range(Params["Num_Amylase_States"]))
 
-        C, _,States,Actions = dFBA(Models, Mapping_Dict, Init_C, Params,dt=0.1)
+        C, _,States,Actions = dFBA(Models, Mapping_Dict, Init_C, Params,t_span,dt=0.1)
+        
         for j in range(Models.__len__()):
             Returns[j].append(np.average(C[1:, j]))  # No GAMMA for now
 
