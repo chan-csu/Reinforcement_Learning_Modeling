@@ -13,7 +13,7 @@ import cProfile
 import pstats
 import concurrent.futures
 import multiprocessing
-CORES=multiprocessing.cpu_count()
+CORES = multiprocessing.cpu_count()
 
 # import plotext as plx
 
@@ -70,7 +70,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
 
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
-        Models[i].solver="cplex"
+        # Models[i].solver = "cplex"
 
     # Policy initialization
     # Initial Policy is set to a random policy
@@ -83,7 +83,8 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
     for i in range(Number_of_Models):
         Models[i].Policy = Policy_Deterministic(Init_Policy_Dict)
 
-    Returns=Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict,[0,10], Num_Episodes=2, Gamma=1)
+    Returns = Generate_Episodes_With_State(
+        dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 10], Num_Episodes=2, Gamma=1)
 
     print(Returns)
     ############################
@@ -91,14 +92,12 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
     ############################
 
 
-def dFBA(Models, Mapping_Dict, Init_C, Params,t_span,dt=0.1):
+def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     """
     This function calculates the concentration of each species
     Models is a list of COBRA Model objects
     Mapping_Dict is a dictionary of dictionaries
     """
-
-
 
     ##############################################################
     # Initializing the ODE Solver
@@ -108,17 +107,17 @@ def dFBA(Models, Mapping_Dict, Init_C, Params,t_span,dt=0.1):
     # Solving the ODE
     ##############################################################
 
-    States=[]
+    States = []
     [States.append(0) for i in range(t.__len__())]
-    Actions=[]
-    [Actions.append([0,0]) for i in range(t.__len__())]
+    Actions = []
+    [Actions.append([0, 0]) for i in range(t.__len__())]
 
     sol, t = odeFwdEuler(ODE_System, Init_C, 0.1,  Params,
-                         [0, 10], Models, Mapping_Dict,States,Actions)
-    return sol, t,States,Actions
+                         [0, 10], Models, Mapping_Dict, States, Actions)
+    return sol, t, States, Actions
 
 
-def ODE_System(C, t, Models, Mapping_Dict, Params,States,Actions,Integrator_Counter):
+def ODE_System(C, t, Models, Mapping_Dict, Params, States, Actions, Integrator_Counter):
     """
     This function calculates the differential equations for the system
     Models is a list of COBRA Model objects
@@ -156,13 +155,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params,States,Actions,Integrator_Coun
         if t == 0:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x/100)(Models[i].InitAction, 1)
-            Actions[0][i]=Models[i].InitAction
+            Actions[0][i] = Models[i].InitAction
         else:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                            [i]].lower_bound = (lambda x, a: a*x/100)(Models[i].Policy.get_action(Models[i].State), 5)
+                                [i]].lower_bound = (lambda x, a: a*x/100)(Models[i].Policy.get_action(Models[i].State), 5)
         Sols[i] = Models[i].optimize()
         dCdt[i] += Sols[i].objective_value*C[i]
-
 
     for i in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
         for j in range(Models.__len__()):
@@ -180,9 +178,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params,States,Actions,Integrator_Coun
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     print(t)
     for i in range(Models.__len__()):
-        if t!=0:
-            Actions[Integrator_Counter][i]=Models[i].Policy.Policy[Models[i].State]
-    States[Integrator_Counter]=Models[0].State
+        if t != 0:
+            Actions[Integrator_Counter][i] = Models[i].Policy.Policy[Models[i].State]
+    States[Integrator_Counter] = Models[0].State
     return dCdt
 
 
@@ -290,41 +288,48 @@ def Descretize_Concs(Glucose: float, Starch: float, Amylase: float, Params):
     return (Glucose1, Starch1, Amylase1)
 
 
-def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict,States,Actions):
-    Integrator_Counter=0
+def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict, States, Actions):
+    Integrator_Counter = 0
     t = np.arange(t_span[0], t_span[1], dt)
     sol = np.zeros((len(t), len(ICs)))
     sol[0] = ICs
     for i in range(1, len(t)):
         sol[i] = sol[i-1] + \
-            ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict, Params,States,Actions,Integrator_Counter)*dt
-        Integrator_Counter+=1
+            ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict,
+                         Params, States, Actions, Integrator_Counter)*dt
+        Integrator_Counter += 1
     return sol, t
 
 
-def Generate_Episodes_With_State(dFBA,States, Params, Init_C, Models, Mapping_Dict,t_span=[0,100], Num_Episodes=2, Gamma=1):
-    Returns_Totall={}
-    for state in States:
-        Returns_Totall[state]=[[0]]
+def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 100], Num_Episodes=2, Gamma=1):
+    Returns_Totall = {}
+    for M in range(Models.__len__()):
+        Returns_Totall[M] = {}
+        for state in States:
+            for action in range(Params["Num_Amylase_States"]):
+                Returns_Totall[M][(state, action)] = [0]
 
     for k in range(Num_Episodes):
-        Returns={}
         Init_C[[Params["Glucose_Index"],
                 Params["Starch_Index"],
                 Params["Amylase_Ind"]]] = [random.uniform(0, Params["Glc_Max_C"]*1.1),
-                                           random.uniform(0, Params["Starch_Max_C"]*1.1),
+                                           random.uniform(
+                                               0, Params["Starch_Max_C"]*1.1),
                                            random.uniform(0, Params["Amylase_Max_C"]*1.1)]
 
         for i in range(Models.__len__()):
             Models[i].InitAction = random.choice(
                 range(Params["Num_Amylase_States"]))
 
-        C, _,States,Actions = dFBA(Models, Mapping_Dict, Init_C, Params,t_span,dt=0.1)
-        
-        for j in range(Models.__len__()):
-            Returns[j].append(np.average(C[1:, j]))  # No GAMMA for now
+        C, _, States, Actions = dFBA(
+            Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1)
+        for st in range(States.__len__()-1):
+            for m in range(Models.__len__()):
+                Returns_Totall[m][(States[st], Actions[st][m])
+                                  ].append(np.sum(C[st:, m]))
+                # Here we can change np.sum(C[st:, m]) to C[-1, m] to favor final steady state concentratins
 
-    return Returns
+    return Returns_Totall
 
 
 if __name__ == "__main__":
