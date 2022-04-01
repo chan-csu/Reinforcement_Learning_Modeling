@@ -70,7 +70,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
 
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
-        # Models[i].solver = "cplex"
+        Models[i].solver = "cplex"
 
     # Policy initialization
     # Initial Policy is set to a random policy
@@ -84,7 +84,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
         Models[i].Policy = Policy_Deterministic(Init_Policy_Dict)
 
     Returns = Generate_Episodes_With_State(
-        dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 10], Num_Episodes=2, Gamma=1)
+        dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 100], Num_Episodes=2, Gamma=1)
 
     print(Returns)
     ############################
@@ -113,7 +113,7 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     [Actions.append([0, 0]) for i in range(t.__len__())]
 
     sol, t = odeFwdEuler(ODE_System, Init_C, 0.1,  Params,
-                         [0, 10], Models, Mapping_Dict, States, Actions)
+                         t_span, Models, Mapping_Dict, States, Actions)
     return sol, t, States, Actions
 
 
@@ -134,6 +134,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, States, Actions, Integrator_C
     [n+m-1]-Exc[m]
     [n+m]-Starch
     """
+    C[C < 0] = 0
     dCdt = np.zeros(C.shape)
     Sols = [0]*Models.__len__()
 
@@ -307,7 +308,7 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
         Returns_Totall[M] = {}
         for state in States:
             for action in range(Params["Num_Amylase_States"]):
-                Returns_Totall[M][(state, action)] = [0]
+                Returns_Totall[M][(state, action)] = []
 
     for k in range(Num_Episodes):
         Init_C[[Params["Glucose_Index"],
