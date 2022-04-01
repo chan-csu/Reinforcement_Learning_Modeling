@@ -89,10 +89,18 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
 
     while True:
         Full_Batch=[]
+        UD={}
         with concurrent.futures.ProcessPoolExecutor(CORES) as executor:
-             Results=[executor.submit(Generate_Episodes_With_State,dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 20],dt=0.1, Num_Episodes=6, Gamma=1) for i in range(CORES)]
+             Results=[executor.submit(Generate_Episodes_With_State,dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 5],dt=0.1, Num_Episodes=3, Gamma=1) for i in range(CORES)]
              for f in concurrent.futures.as_completed(Results):
                  Full_Batch.append(f.result())
+        for m in range(Number_of_Models):
+            UD[m]={}
+            for state in States:
+                UD[m][state]=[]
+                for i in range(Full_Batch.__len__()):
+                    UD[m][state].append(Full_Batch[i][m][state])
+
         print(Full_Batch)
 
 
