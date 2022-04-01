@@ -15,6 +15,8 @@ import pstats
 import concurrent.futures
 import multiprocessing
 import pickle
+import itertools
+
 CORES = multiprocessing.cpu_count()
 
 # import plotext as plx
@@ -91,21 +93,36 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
         Full_Batch=[]
         UD={}
         with concurrent.futures.ProcessPoolExecutor(CORES) as executor:
-             Results=[executor.submit(Generate_Episodes_With_State,dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 5],dt=0.1, Num_Episodes=3, Gamma=1) for i in range(CORES)]
+             Results=[executor.submit(Generate_Episodes_With_State,dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, 100],dt=0.1, Num_Episodes=5000, Gamma=1) for i in range(CORES)]
              for f in concurrent.futures.as_completed(Results):
                  Full_Batch.append(f.result())
         for m in range(Number_of_Models):
             UD[m]={}
             for state in States:
-                UD[m][state]=[]
-                for i in range(Full_Batch.__len__()):
-                    UD[m][state].append(Full_Batch[i][m][state])
+                for action in range(Params["Num_Amylase_States"]):
+                    UD[m][(state,action)]=[]
+                    for i in range(Full_Batch.__len__()):
+                        UD[m][(state,action)].append(Full_Batch[i][m][(state,action)])
+                    Temp_L=list(itertools.chain.from_iterable(UD[m][(state,action)]))
+                    if Temp_L.__len__()==0:
+                        Temp_L=[0]
+                    UD[m][(state,action)]=np.average(Temp_L)
+        for m in range(Number_of_Models):
+            Temp_Pol={}
+            for state in States:
+                Max_Val=max([UD[m][(s,a)] for (s,a) in UD[m].keys() if s==state])
+                for (s,a) in UD[m].keys():
+                    if s==state:
+                        if UD[m][(s,a)]==Max_Val:
+                            Temp_Pol[state]=a
+            Models[m].Policy=Policy_Deterministic(Temp_Pol)
 
-        print(Full_Batch)
-
-
-
-        
+        if not os.path.exists(os.path.join(Main_dir, "Outputs")):
+            os.mkdir(os.path.join(Main_dir, "Outputs"))
+        for i in range(Number_of_Models):                    
+            with open(os.path.join(Main_dir,"Outputs", Models[i].name+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
+                pickle.dump(Models[i].Policy.Policy,f)
+        Outer_Counter += 1
 
     ############################
     # Saving the policy with pickle place holder
@@ -156,7 +173,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, States, Actions, Integrator_C
     """
     C[C<0] = 0
     dCdt = np.zeros(C.shape)
-    Sols = [0]*Models.__len__()
+    Sols = list([0 for i in range(Models.__len__()) ])
 
     for i in range(Models.__len__()):
         Models[i].State = Descretize_Concs(
@@ -362,6 +379,7 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
                 Returns_Totall[m][(States[st], Actions[st][m])
                                   ].append(np.sum(C[st:, m]))
                 # Here we can change np.sum(C[st:, m]) to C[-1, m] to favor final steady state concentratins
+                # Or even other smart things!
         # Leg=[]
         # plt.cla()
         # for i in range(Models.__len__()):
