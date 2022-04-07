@@ -94,7 +94,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01)
         UD = {}
         with concurrent.futures.ProcessPoolExecutor(CORES) as executor:
             Results = [executor.submit(Generate_Episodes_With_State, dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[
-                                       0, 100], dt=0.1, Num_Episodes=5000, Gamma=1) for i in range(CORES)]
+                                       0, 100], dt=0.1, Num_Episodes=5, Gamma=1) for i in range(CORES)]
             for f in concurrent.futures.as_completed(Results):
                 Full_Batch.append(f.result())
         for m in range(Number_of_Models):
