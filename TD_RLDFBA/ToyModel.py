@@ -1,3 +1,0 @@
-import cobra
-
-ToyModel=None
