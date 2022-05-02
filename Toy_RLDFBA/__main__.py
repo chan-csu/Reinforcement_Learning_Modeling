@@ -8,8 +8,6 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import math
-import cProfile
-import pstats
 import concurrent.futures
 import multiprocessing
 import pickle
@@ -23,7 +21,7 @@ CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.1, NoE: int = 100):
+def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.05, NoE: int = 500):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -67,11 +65,11 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1, 
 
     Init_C[[Params["Glucose_Index"],
             Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
-    Inlet_C[Params["Starch_Index"]] = 1
+    Inlet_C[Params["Starch_Index"]] = 100
     Params["Inlet_C"] = Inlet_C
 
     for i in range(Number_of_Models):
-        Init_C[i] = 0.000001
+        Init_C[i] = 0.0001
         Models[i].solver = "cplex"
 
     # Policy initialization
@@ -121,8 +119,9 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1, 
                         T.append(Full_Batch[i][m][(state, action)])
                     Temp_L = list(itertools.chain.from_iterable(T))
                     if Temp_L.__len__() != 0:
-                        UD[m][(state, action)] += alpha * \
-                            (np.average(Temp_L)-UD[m][(state, action)])
+                        for k in range(Temp_L.__len__()):
+                            
+                            UD[m][(state, action)]+=alpha*(Temp_L[k]-UD[m][(state, action)])
         for m in range(Number_of_Models):
             Temp_Pol = {}
             for state in States:
@@ -225,19 +224,16 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, States, Actions, Integrator_C
     for i in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
         for j in range(Models.__len__()):
             if Mapping_Dict["Mapping_Matrix"][i, j] != -1:
-                if Sols[j].status == 'infeasible':
-                    dCdt[i] = 0
-                else:
-                    dCdt[i+Models.__len__()] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
+                if Sols[j].status == 'optimal':
+                    dCdt[i+Models.__len__()] +=Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                     [i, j]]*C[j]
-            if Mapping_Dict["Ex_sp"][i] == "Glc_Ex":
-                if Sols[j].status == 'infeasible':
-                    dCdt[i+Models.__len__()] = Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
-                else:
 
-                    dCdt[i+Models.__len__()] += Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])+Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
+            if Mapping_Dict["Ex_sp"][i] == "Glc_Ex":
+                dCdt[i+Models.__len__()] = Starch_Degradation_Kinetics(
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
+                
+                if Sols[j].status == 'optimal':
+                    dCdt[i+Models.__len__()] +=Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                                                  [i, j]]*C[j]
 
     dCdt[Params["Starch_Index"]] = - \
@@ -248,7 +244,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, States, Actions, Integrator_C
     for i in range(Models.__len__()):
         if t != 0:
             Actions[Integrator_Counter][i] = Models[i].Policy.Policy[Models[i].State]
-        f_vals[Integrator_Counter][i]=[Sols[i].objective_value]
+        f_vals[Integrator_Counter][i]=Sols[i].objective_value
    
     States[Integrator_Counter] = Models[0].State
 
@@ -301,7 +297,7 @@ class Policy_General:
         np.random.choice(Actions, p=[action[1] for action in Actions], k=1)
 
 
-def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 100):
+def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 1):
     """
     This function calculates the rate of degradation of starch
     a_Amylase Unit: mmol
@@ -388,10 +384,14 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
         C, t, States, Actions,f_vals = dFBA(
             Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
-        for st in range(States.__len__()-1):
-            for m in range(Models.__len__()):
-                Returns_Totall[m][(States[st], Actions[st][m])
-                                  ].append(f_vals[st][m])
+        # for st in range(States.__len__()-1):
+        #     for m in range(Models.__len__()):
+        #         Returns_Totall[m][(States[st], Actions[st][m])
+        #                           ].append(f_vals[st][m])
+        for m in range(Models.__len__()):
+            Returns_Totall[m][(States[0], Actions[0][m])
+                                   ].append(np.sum(f_vals,axis=0)[m])
+
 
         print("Episode: ", k)
         # Here we can change np.sum(C[*, m]) to C[-1, m] to favor final steady state concentratins

@@ -23,7 +23,7 @@ CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01,alpha: float = 0.1,):
+def main(Number_of_Models: int = 2, max_time: int = 10, Dil_Rate: float = 0.01,alpha: float = 0.1,Episodes_Per_Core: int = 5):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -116,7 +116,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01,
 
 
         with concurrent.futures.ProcessPoolExecutor(CORES) as executor:
-             Results=[executor.submit(Generate_Episodes_With_State,dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, max_time],dt=0.1, Num_Episodes=50, Gamma=1) for i in range(CORES)]
+             Results=[executor.submit(Generate_Episodes_With_State,dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[0, max_time],dt=0.1, Num_Episodes=Episodes_Per_Core, Gamma=1) for i in range(CORES)]
              for f in concurrent.futures.as_completed(Results):
                  Full_Batch.append(f.result())
 
@@ -128,7 +128,7 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.01,
                         T.append(Full_Batch[i][m][(state,action)])
                     Temp_L=list(itertools.chain.from_iterable(T))
                     if Temp_L.__len__()!=0:
-                        UD[m][(state,action)]+=(1/(Outer_Counter+1))*(np.average(Temp_L)-UD[m][(state,action)])
+                        UD[m][(state,action)]+=alpha*(np.average(Temp_L)-UD[m][(state,action)])
         for m in range(Number_of_Models):
             Temp_Pol={}
             for state in States:
