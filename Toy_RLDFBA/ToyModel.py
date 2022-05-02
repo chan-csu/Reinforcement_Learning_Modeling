@@ -29,8 +29,8 @@ ToyModel = Model('Toy_Model')
 
 ### S_Uptake ###
 
-S_Uptake = Reaction('S_Uptake')
-S = Metabolite('S', compartment='c')
+S_Uptake = Reaction('Glc_Ex')
+S = Metabolite('Glc', compartment='c')
 S_Uptake.add_metabolites({S: -1})
 S_Uptake.lower_bound = -10
 S_Uptake.upper_bound = 0
@@ -66,7 +66,7 @@ ToyModel.add_reaction(X_Production)
 
 ### Biomass Release ###
 
-X_Release = Reaction('X_Release')
+X_Release = Reaction('X_Ex')
 X_Release.add_metabolites({X: -1})
 X_Release.lower_bound = 0
 X_Release.upper_bound = 1000
@@ -83,17 +83,17 @@ ToyModel.add_reaction(P_Prod)
 
 ### Product Release ###
 
-P_out = Reaction('P_out')
+P_out = Reaction('P_Ex')
 P_out.add_metabolites({P: -1})
 P_out.lower_bound = 0
 P_out.upper_bound = 1000
 ToyModel.add_reaction(P_out)
-ToyModel.objective = 'X_Release'
+ToyModel.objective = 'X_Ex'
 
 ### Amylase Production ###
 Amylase_Prod = Reaction('Amylase_Prod')
 Amylase = Metabolite('Amylase', compartment='c')
-Amylase_Prod.add_metabolites({S_x: -1, ATP: -1, ADP: 1, Amylase: 1})
+Amylase_Prod.add_metabolites({S_x: -1, ATP: -10, ADP: 10, Amylase: 1})
 Amylase_Prod.lower_bound = 0
 Amylase_Prod.upper_bound = 1000
 ToyModel.add_reaction(Amylase_Prod)
