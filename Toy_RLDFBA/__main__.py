@@ -21,7 +21,7 @@ CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.05, NoE: int = 500):
+def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.05, NoE: int = 5000):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -67,10 +67,9 @@ def main(Number_of_Models: int = 2, max_time: int = 100, Dil_Rate: float = 0.1, 
             Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
     Inlet_C[Params["Starch_Index"]] = 100
     Params["Inlet_C"] = Inlet_C
-
     for i in range(Number_of_Models):
         Init_C[i] = 0.0001
-        Models[i].solver = "cplex"
+        Models[i].solver = "glpk"
 
     # Policy initialization
     # Initial Policy is set to a random policy
@@ -215,6 +214,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, States, Actions, Integrator_C
         else:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x/10)(Models[i].Policy.get_action(Models[i].State), 1)
+        # Sols[i] = Models[i].optimize()
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
             dCdt[i] = 0
