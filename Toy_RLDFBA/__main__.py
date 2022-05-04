@@ -248,7 +248,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, States, Actions, Integrator_C
     for i in range(Models.__len__()):
         if t != 0:
             Actions[Integrator_Counter][i] = Models[i].Policy.Policy[Models[i].State]
-        f_vals[Integrator_Counter][i]=[Sols[i].objective_value]
+        f_vals[Integrator_Counter][i]=Sols[i].objective_value if Sols[i].status != 'infeasible' else 0 
    
     States[Integrator_Counter] = Models[0].State
 
