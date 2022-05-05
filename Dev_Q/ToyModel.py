@@ -51,8 +51,8 @@ ToyModel.add_reaction(ATP_Cat)
 
 ATP_M = Reaction('ATP_M')
 ATP_M.add_metabolites({ATP: -1, ADP: 1})
-ATP_M.lower_bound = 10
-ATP_M.upper_bound = 1000
+ATP_M.lower_bound = 1
+ATP_M.upper_bound = 100
 ToyModel.add_reaction(ATP_M)
 
 ### Biomass Production ###
