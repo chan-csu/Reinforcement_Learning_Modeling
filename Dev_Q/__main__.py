@@ -86,7 +86,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
 
     for i in range(Number_of_Models):
         Init_C[i] = 0.000001
-        Models[i].solver = "glpk"
+        Models[i].solver = "cplex"
 
     ###----------------------------------------------------------------------------
 
