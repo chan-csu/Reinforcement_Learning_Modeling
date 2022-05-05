@@ -74,6 +74,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
         "Glc_Max_C": 100,
         "Starch_Max_C": 1,
         "Amylase_Max_C": 1,
+        "alpha": alpha,
 
 
     }
@@ -85,7 +86,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
 
     for i in range(Number_of_Models):
         Init_C[i] = 0.000001
-        Models[i].solver = "cplex"
+        Models[i].solver = "glpk"
 
     ###----------------------------------------------------------------------------
 
@@ -103,12 +104,10 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
         if Starting_Policy == "Random":
             for state in States:
                 Init_Policy_Dict[state] = random.choice(range(10))
-            Models[i].Policy = Policy_Deterministic(Init_Policy_Dict.copy())
-
         else: 
             with open(Starting_Policy[i], "rb") as f:
                 Init_Policy_Dict[i] = pickle.load(f)
-            Models[i].Policy = Policy_Deterministic(Init_Policy_Dict[i].copy())
+        Models[i].Policy = Policy_Deterministic(Init_Policy_Dict.copy())
         with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_0.pkl"), "wb") as f:
             pickle.dump(Models[i].Policy.Policy, f)
 
@@ -128,9 +127,8 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
         
         C,t=Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[
                                        0, max_time], dt=0.1)
-        for l in range(Number_of_Models):
-            Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(np.sum(Models[l].f_values)-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
-            Models[l].Policy.Policy[(Models[l].Init_State)]=np.argmax([Models[l].Q[(Models[l].Init_State,v)] for v in range(Params["Num_Amylase_States"])])
+        
+
 
         
         print(f"Iter: {Outer_Counter}")
@@ -174,7 +172,7 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     return sol, t
 
 
-def ODE_System(C, t, Models, Mapping_Dict, Params):
+def ODE_System(C, t, Models, Mapping_Dict, Params,dt):
     """
     This function calculates the differential equations for the system
     Models is a list of COBRA Model objects
@@ -210,6 +208,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
                 Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
                                     ].lower_bound = - Glucose_Uptake_Kinetics(C[j+Models.__len__()])
     for i in range(Models.__len__()):
+
         if t == 0:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x/10)(Models[i].InitAction, 1)
@@ -248,9 +247,15 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
             C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
+    Next_C=C+dCdt*dt
+    Next_C[Next_C<0]=0
+    Next_State = Descretize_Concs(
+            Next_C[Params["Glucose_Index"]], Next_C[Params["Starch_Index"]], Next_C[Params["Amylase_Ind"]], Params)
 
-
-    
+    for z in range(Models.__len__()):
+        a= Models[z].InitAction if t == 0 else Models[z].Policy.get_action(Models[z].State)
+        Models[z].Q[(Models[z].State,a)]+=Params['alpha']*(Models[z].f_values[-1]+Models[z].Q[(Next_State,np.argmax([Models[z].Q[(Next_State,v)] for v in range(Params["Num_Amylase_States"])]))]-Models[z].Q[(Models[z].State,a)])
+        Models[z].Policy.Policy[(Models[z].Init_State)]=np.argmax([Models[z].Q[(Models[z].Init_State,v)] for v in range(Params["Num_Amylase_States"])])
     return dCdt
 
 
@@ -358,7 +363,7 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
     for i in range(1, len(t)):
         sol[i] = sol[i-1] + \
             ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict,
-                         Params)*dt
+                         Params,dt)*dt
         Integrator_Counter += 1
     return sol, t
 
@@ -410,9 +415,5 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
 
 if __name__ == "__main__":
 
-    Policies=[]
-    for i in range(2):
-        Policies.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_2500.pkl"))
 
-
-    main(Starting_Policy=Policies)
+    main()
