@@ -80,11 +80,11 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
 
     Init_C[[Params["Glucose_Index"],
             Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
-    Inlet_C[Params["Starch_Index"]] = 100
+    Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
 
     for i in range(Number_of_Models):
-        Init_C[i] = 0.000001
+        Init_C[i] = 0.001
         Models[i].solver = "cplex"
 
     ###----------------------------------------------------------------------------
@@ -129,13 +129,15 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
         C,t=Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[
                                        0, max_time], dt=0.1)
         for l in range(Number_of_Models):
-            Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(np.sum(Models[l].f_values)-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
+            # Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(C[-1,i]-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
+            Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(C[-1,i]-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
+
             Models[l].Policy.Policy[(Models[l].Init_State)]=np.argmax([Models[l].Q[(Models[l].Init_State,v)] for v in range(Params["Num_Amylase_States"])])
 
         
         print(f"Iter: {Outer_Counter}")
         print(f"End_Concs: {list([C[-1,i] for i in range(Number_of_Models)])}")
-        print(f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
+        # print(f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
     ############################
     # Saving the policy with pickle place holder once in a while
     ############################
@@ -236,16 +238,16 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
             if Mapping_Dict["Ex_sp"][i] == "Glc_Ex":
                 if Sols[j].status == 'infeasible':
                     dCdt[i+Models.__len__()] = Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
                 else:
 
                     dCdt[i+Models.__len__()] += Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])+Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10+Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                                                  [i, j]]*C[j]
 
     dCdt[Params["Starch_Index"]] = - \
         Starch_Degradation_Kinetics(
-            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
+            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/10
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
 
@@ -299,7 +301,7 @@ class Policy_General:
         np.random.choice(Actions, p=[action[1] for action in Actions], k=1)
 
 
-def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 100):
+def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 10):
     """
     This function calculates the rate of degradation of starch
     a_Amylase Unit: mmol
@@ -307,7 +309,7 @@ def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: fl
 
     """
 
-    return a_Amylase*Starch*k
+    return a_Amylase*Starch*k/(Starch+10)
 
 
 def Glucose_Uptake_Kinetics(Glucose: float, Model=""):
@@ -410,9 +412,9 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
 
 if __name__ == "__main__":
 
-    Policies=[]
-    for i in range(2):
-        Policies.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_2500.pkl"))
+    # Policies=[]
+    # for i in range(2):
+    #     Policies.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_2500.pkl"))
 
 
-    main(Starting_Policy=Policies)
+    main()

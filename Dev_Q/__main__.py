@@ -104,10 +104,11 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         if Starting_Policy == "Random":
             for state in States:
                 Init_Policy_Dict[state] = random.choice(range(10))
+            Models[i].Policy = Policy_Deterministic(Init_Policy_Dict.copy())
         else:
             with open(Starting_Policy[i], "rb") as f:
                 Init_Policy_Dict[i] = pickle.load(f)
-        Models[i].Policy = Policy_Deterministic(Init_Policy_Dict[i].copy())
+            Models[i].Policy = Policy_Deterministic(Init_Policy_Dict[i].copy())
         with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_0.pkl"), "wb") as f:
             pickle.dump(Models[i].Policy.Policy, f)
 
@@ -228,12 +229,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
             if Mapping_Dict["Ex_sp"][i] == "Glc_Ex":
                 if Sols[j].status == 'infeasible':
                     dCdt[i+Models.__len__()] = Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
                 else:
 
                     dCdt[i+Models.__len__()] += Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])+Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
-                                                                                                 [i, j]]*10*C[j]
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10+Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
+                                                                                                 [i, j]]*C[j]
 
     dCdt[Params["Starch_Index"]] = - \
         Starch_Degradation_Kinetics(
@@ -410,8 +411,8 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
 
 
 if __name__ == "__main__":
-    Init_Pols=[]
-    for i in range(2):
-        Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_1500.pkl"))
+    # Init_Pols=[]
+    # for i in range(2):
+    #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
-    main(Starting_Policy=Init_Pols)
+    main()
