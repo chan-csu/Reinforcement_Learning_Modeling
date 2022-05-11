@@ -15,7 +15,7 @@ import concurrent.futures
 import multiprocessing
 import pickle
 import itertools
-import cplex
+# import cplex
 from ToyModel import ToyModel
 CORES = multiprocessing.cpu_count()
 
@@ -85,7 +85,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
 
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
-        Models[i].solver = "cplex"
+        Models[i].solver = "glpk"
 
     ###----------------------------------------------------------------------------
 
@@ -141,7 +141,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
     ############################
     # Saving the policy with pickle place holder once in a while
     ############################
-        if Outer_Counter % 100 == 0:
+        if Outer_Counter % 10000 == 0:
             for i in range(Number_of_Models):
                 with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
                     pickle.dump(Models[i].Policy.Policy, f)
@@ -214,11 +214,11 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
     for i in range(Models.__len__()):
         if t == 0:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x/10)(Models[i].InitAction, 1)
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].InitAction, 1)
 
         else:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x/10)(Models[i].Policy.get_action(Models[i].State), 1)
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy.get_action(Models[i].State), 1)
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
             Models[i].f_values.append(-1)
@@ -236,18 +236,20 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
                     dCdt[i+Models.__len__()] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                     [i, j]]*C[j]
             if Mapping_Dict["Ex_sp"][i] == "Glc_Ex":
+                
                 if Sols[j].status == 'infeasible':
-                    dCdt[i+Models.__len__()] = Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
+                    pass
+                
                 else:
 
-                    dCdt[i+Models.__len__()] += Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10+Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
-                                                                                                 [i, j]]*C[j]
+                    dCdt[i+Models.__len__()] +=Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"][i, j]]*C[j]
+        
+    dCdt[Params["Glucose_Index"]] += Starch_Degradation_Kinetics(
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10                                                                                    
 
     dCdt[Params["Starch_Index"]] = - \
-        Starch_Degradation_Kinetics(
-            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/10
+        Starch_Degradation_Kinetics(C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/10
+
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
 
