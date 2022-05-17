@@ -114,9 +114,10 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
         iter=Pol_Cases[Models[j]._name][i].split("_")[-1].split(".")[0]
         ax[i,0].set_title(f"Concentration Profile of Agents: Iter {iter}")
         ax[i,1].set_title(f"Metabolite Concentrations")
-        ax[i,1].plot(t,C[:,Models.__len__():])
+        ax[i,1].plot(t,C[:,6])
 
 
+    plt.tight_layout()
     plt.show()
     ############################
     # Saving the policy with pickle place holder once in a while
