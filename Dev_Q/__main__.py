@@ -34,7 +34,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     Starting_Policy:
 
     Defult --> Random: Initial Policy will be a random policy for all agents.
-    Otherwise --> a list of policies, pickle file addresses, for each agent. 
+    Otherwise --> a list of policies, pickle file addresses, for each agent.
 
 
     """
@@ -72,7 +72,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "Num_Starch_States": 10,
         "Num_Amylase_States": 10,
         "Glc_Max_C": 100,
-        "Starch_Max_C": 10,
+        "Starch_Max_C": 50,
         "Amylase_Max_C": 1,
         "alpha": alpha,
 
@@ -136,13 +136,12 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     ############################
     # Saving the policy with pickle place holder once in a while
     ############################
-        if Outer_Counter % 100 == 0:
+        if Outer_Counter % 10000 == 0:
             for i in range(Number_of_Models):
                 with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
                     pickle.dump(Models[i].Policy.Policy, f)
-
+       
         Outer_Counter += 1
-
 
 def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     """
@@ -200,23 +199,22 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                 Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
                                     ].lower_bound = - Glucose_Uptake_Kinetics(C[j+Models.__len__()])
     for i in range(Models.__len__()):
-
         if t == 0:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x/10)(Models[i].InitAction, 1)
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].InitAction, 1)
 
         else:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x/10)(Models[i].Policy.get_action(Models[i].State), 1)
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy.get_action(Models[i].State), 1)
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
-            Models[i].f_values.append(-1)
+            Models[i].f_values.append(-10)
             dCdt[i] = 0
-        elif Sols[i].status == "optimal":
+        else:
             dCdt[i] += Sols[i].objective_value*C[i]
             Models[i].f_values.append(Sols[i].objective_value)
-        else:
-            print("Flag")
+
+    ### Writing the balance equations
 
     for i in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
         for j in range(Models.__len__()):
@@ -226,15 +224,17 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                 else:
                     dCdt[i+Models.__len__()] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                     [i, j]]*C[j]
+
             if Mapping_Dict["Ex_sp"][i] == "Glc_Ex":
                 if Sols[j].status == 'infeasible':
-                    dCdt[i+Models.__len__()] = Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
+                    pass
+
                 else:
 
-                    dCdt[i+Models.__len__()] += Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10+Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
-                                                                                                 [i, j]]*C[j]
+                    dCdt[i+Models.__len__()] +=Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"][i, j]]*C[j]
+
+    dCdt[Params["Glucose_Index"]] += Starch_Degradation_Kinetics(
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
 
     dCdt[Params["Starch_Index"]] = - \
         Starch_Degradation_Kinetics(

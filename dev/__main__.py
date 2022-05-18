@@ -72,7 +72,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
         "Num_Starch_States": 10,
         "Num_Amylase_States": 10,
         "Glc_Max_C": 100,
-        "Starch_Max_C": 1,
+        "Starch_Max_C": 50,
         "Amylase_Max_C": 1,
 
 
@@ -221,11 +221,13 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
                                 [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy.get_action(Models[i].State), 1)
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
-            Models[i].f_values.append(-1)
+            Models[i].f_values.append(-10)
             dCdt[i] = 0
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
             Models[i].f_values.append(Sols[i].objective_value)
+    
+    ### Writing the balance equations
 
     for i in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
         for j in range(Models.__len__()):

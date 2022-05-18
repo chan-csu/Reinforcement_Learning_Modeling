@@ -51,8 +51,8 @@ ToyModel.add_reaction(ATP_Cat)
 
 ATP_M = Reaction('ATP_M')
 ATP_M.add_metabolites({ATP: -1, ADP: 1})
-ATP_M.lower_bound = 10
-ATP_M.upper_bound = 1000
+ATP_M.lower_bound = 1
+ATP_M.upper_bound = 100
 ToyModel.add_reaction(ATP_M)
 
 ### Biomass Production ###
@@ -93,7 +93,7 @@ ToyModel.objective = 'X_Ex'
 ### Amylase Production ###
 Amylase_Prod = Reaction('Amylase_Prod')
 Amylase = Metabolite('Amylase', compartment='c')
-Amylase_Prod.add_metabolites({S_x: -1, ATP: -10, ADP: 10, Amylase: 1})
+Amylase_Prod.add_metabolites({S_x: -1, ATP: -1, ADP: 1, Amylase: 1})
 Amylase_Prod.lower_bound = 0
 Amylase_Prod.upper_bound = 1000
 ToyModel.add_reaction(Amylase_Prod)
