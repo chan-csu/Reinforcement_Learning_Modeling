@@ -238,7 +238,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
 
     dCdt[Params["Starch_Index"]] = - \
         Starch_Degradation_Kinetics(
-            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/10
+            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/100
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     Next_C = C+dCdt*dt
@@ -302,7 +302,7 @@ class Policy_General:
         np.random.choice(Actions, p=[action[1] for action in Actions], k=1)
 
 
-def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 10):
+def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 1):
     """
     This function calculates the rate of degradation of starch
     a_Amylase Unit: mmol

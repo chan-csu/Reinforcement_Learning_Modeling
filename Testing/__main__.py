@@ -24,7 +24,7 @@ CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_Conditions=None,max_time: int = 1000, Dil_Rate: float = 0.1, alpha: float = 0.1, Starting_Policy: str = "Random"):
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_Conditions=None,max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.1, Starting_Policy: str = "Random"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -184,11 +184,11 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
 
         if t == 0:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x/2)(Models[i].InitAction, 1)
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].InitAction, 1)
 
         else:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x/2)(Models[i].Policy.get_action(Models[i].State), 1)
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy.get_action(Models[i].State), 1)
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
             dCdt[i] = 0
@@ -218,7 +218,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                         C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10                                                                                    
 
     dCdt[Params["Starch_Index"]] = - \
-        Starch_Degradation_Kinetics(C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/10
+        Starch_Degradation_Kinetics(C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/100
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
    
@@ -388,7 +388,7 @@ if __name__ == "__main__":
     
     ### Defining the conditions for testing###
     
-    Test_Condition={"Glucose":100,
+    Test_Condition={"Glucose":80,
                     "Starch":10,
                     "Amylase":0.1}
         
