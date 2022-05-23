@@ -15,7 +15,7 @@ import concurrent.futures
 import multiprocessing
 import pickle
 import itertools
-import cplex
+#import cplex
 from ToyModel import ToyModel
 CORES = multiprocessing.cpu_count()
 
@@ -68,25 +68,29 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "Inlet_C": Inlet_C,
         "Model_Glc_Conc_Index": [Models[i].reactions.index("Glc_Ex") for i in range(Number_of_Models)],
         "Model_Amylase_Conc_Index": [Models[i].reactions.index("Amylase_Ex") for i in range(Number_of_Models)],
+        "Agents_Index": [i for i in range(Number_of_Models)],
         "Num_Glucose_States": 10,
         "Num_Starch_States": 10,
         "Num_Amylase_States": 10,
-        "Glc_Max_C": 100,
-        "Starch_Max_C": 50,
+        "Number_of_Agent_States": 10,
+        "Glucose_Max_C": 100,
+        "Starch_Max_C": 10,
         "Amylase_Max_C": 1,
+        "Agent_Max_C": 10,
         "alpha": alpha,
+        "STATES":("Glucose","Starch","Agent")
 
 
     }
 
-    Init_C[[Params["Glucose_Index"],
-            Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
+    # Init_C[[Params["Glucose_Index"],
+    #         Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
 
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
-        Models[i].solver = "cplex"
+        #Models[i].solver = "cplex"
 
     # ----------------------------------------------------------------------------
 
@@ -95,7 +99,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
 
     Init_Policy_Dict = {}
     States = [(i, j, k) for i in range(Params["Num_Glucose_States"]) for j in range(
-        Params["Num_Starch_States"]) for k in range(Params["Num_Amylase_States"])]
+        Params["Num_Starch_States"]) for k in range(Params["Number_of_Agent_States"])]
 
     if not os.path.exists(os.path.join(Main_dir, "Outputs")):
         os.mkdir(os.path.join(Main_dir, "Outputs"))
@@ -185,8 +189,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     Sols = list([0 for i in range(Models.__len__())])
 
     for i in range(Models.__len__()):
-        Models[i].State = Descretize_Concs(
-            C[Params["Glucose_Index"]], C[Params["Starch_Index"]], C[Params["Amylase_Ind"]], Params)
+        Models[i].State = Descretize_Concs(Params,
+            (C[Params["Glucose_Index"]], C[Params["Starch_Index"]], *C[Params["Agents_Index"]] ))
+
 
     for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
         for i in range(Models.__len__()):
@@ -243,8 +248,8 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     Next_C = C+dCdt*dt
     Next_C[Next_C < 0] = 0
-    Next_State = Descretize_Concs(
-        Next_C[Params["Glucose_Index"]], Next_C[Params["Starch_Index"]], Next_C[Params["Amylase_Ind"]], Params)
+    Next_State = Descretize_Concs(Params,
+            (Next_C[Params["Glucose_Index"]], Next_C[Params["Starch_Index"]], *Next_C[Params["Agents_Index"]] ))
 
     for z in range(Models.__len__()):
         a = Models[z].InitAction if t == 0 else Models[z].Policy.get_action(
@@ -333,24 +338,18 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     return 100*(Compound/(Compound+20))
 
 
-def Descretize_Concs(Glucose: float, Starch: float, Amylase: float, Params):
+def Descretize_Concs(Params,State_Concs):
     """
     This function calculates the state of the reactor
 
 
     """
-
-    Glucose1 = math.floor(Glucose/Params["Glc_Max_C"]*10)
-    Starch1 = math.floor(Starch/Params["Starch_Max_C"]*10)
-    Amylase1 = math.floor(Amylase/Params["Amylase_Max_C"]*10)
-    if Glucose >= Params["Glc_Max_C"]:
-        Glucose1 = 9
-    if Starch >= Params["Starch_Max_C"]:
-        Starch1 = 9
-    if Amylase >= Params["Amylase_Max_C"]:
-        Amylase1 = 9
-
-    return (Glucose1, Starch1, Amylase1)
+    States=Params["STATES"]
+    Descritized=[]
+    for i,s in enumerate(States):
+        Descritized.append(math.floor(State_Concs[i]/Params[s+"_Max_C"]*10)) if State_Concs[i]<Params[s+"_Max_C"] else Descritized.append(9)
+    
+    return tuple(Descritized)
 
 
 def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
@@ -376,16 +375,14 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
 
     Init_C[[Params["Glucose_Index"],
             Params["Starch_Index"],
-            Params["Amylase_Ind"]]] = [random.uniform(0, Params["Glc_Max_C"]*1.1),
+            *Params["Agents_Index"]]] = [random.uniform(0, Params["Glucose_Max_C"]*1.1),
                                        random.uniform(
                                            0, Params["Starch_Max_C"]*1.1),
-                                       random.uniform(0, Params["Amylase_Max_C"]*1.1)]
+                                       random.uniform(0, Params["Agent_Max_C"]*1.1)]
     for i in range(Models.__len__()):
         Models[i].InitAction = random.choice(
             range(Params["Num_Amylase_States"]))
-        Models[i].Init_State = Descretize_Concs(
-            Init_C[Params["Glucose_Index"]], Init_C[Params["Starch_Index"]], Init_C[Params["Amylase_Ind"]], Params)
-
+        Models[i].Init_State = Descretize_Concs(Params,(Init_C[Params["Glucose_Index"]], Init_C[Params["Starch_Index"]], *Init_C[Params["Agents_Index"]]))
     C, t = dFBA(
         Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
 
@@ -415,4 +412,4 @@ if __name__ == "__main__":
     # for i in range(2):
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
-    main()
+    main([ToyModel.copy()])

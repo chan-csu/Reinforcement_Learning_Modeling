@@ -15,7 +15,7 @@ import concurrent.futures
 import multiprocessing
 import pickle
 import itertools
-import cplex
+# import cplex
 from ToyModel import ToyModel
 CORES = multiprocessing.cpu_count()
 
@@ -68,25 +68,28 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
         "Inlet_C": Inlet_C,
         "Model_Glc_Conc_Index": [Models[i].reactions.index("Glc_Ex") for i in range(Number_of_Models)],
         "Model_Amylase_Conc_Index": [Models[i].reactions.index("Amylase_Ex") for i in range(Number_of_Models)],
+        "Agents_Index": [i for i in range(Number_of_Models)],
         "Num_Glucose_States": 10,
         "Num_Starch_States": 10,
         "Num_Amylase_States": 10,
-        "Glc_Max_C": 100,
+        "Number_of_Agent_States": 10,
+        "Glucose_Max_C": 100,
         "Starch_Max_C": 10,
         "Amylase_Max_C": 1,
+        "Agent_Max_C": 10,
         "alpha": alpha,
 
 
     }
 
     Init_C[[Params["Glucose_Index"],
-            Params["Starch_Index"], Params["Amylase_Ind"]]] = [Test_Conditions["Glucose"],Test_Conditions["Starch"],Test_Conditions["Amylase"]]
+            Params["Starch_Index"], *Params["Agents_Index"]]] = [Test_Conditions["Glucose"],Test_Conditions["Starch"],*Test_Conditions["Agents"]]
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
 
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
-        Models[i].solver = "cplex"
+        # Models[i].solver = "cplex"
 
     # ----------------------------------------------------------------------------
 
@@ -111,13 +114,14 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
             0, max_time], dt=0.1)
         ax[i,0].plot(t,C[:,0:Models.__len__()])
         ax[i,0].legend([Mod._name for Mod in Models])
-        iter=Pol_Cases[Models[j]._name][i].split("_")[-1].split(".")[0]
-        ax[i,0].set_title(f"Concentration Profile of Agents: Iter {iter}")
+        Iter=Pol_Cases[Models[j]._name][i].split("_")[-1].split(".")[0]
+        ax[i,0].set_title(f"Concentration Profile of Agents: Iter {Iter}")
         ax[i,1].set_title(f"Metabolite Concentrations")
-        ax[i,1].plot(t,C[:,6])
+        ax[i,1].plot(t,C[:,-1])
 
 
-    plt.tight_layout()
+
+    # plt.tight_layout()
     plt.show()
     ############################
     # Saving the policy with pickle place holder once in a while
@@ -388,15 +392,15 @@ if __name__ == "__main__":
     
     ### Defining the conditions for testing###
     
-    Test_Condition={"Glucose":80,
+    Test_Condition={"Glucose":100,
                     "Starch":10,
                     "Amylase":0.1}
         
     ##########################################
 
     ###  Agent and Policy Initialization  ###
-    Agent_Names=["Agent_0","Agent_1"]
-    Case_Dir=os.path.join(Main_dir,"Cases","Case_3")
+    Agent_Names=["Agent_0"]
+    Case_Dir=os.path.join(Main_dir,"Cases","Case_4")
     Policies={}
     Pols=[DIR for DIR in os.listdir(Case_Dir) if os.path.isfile(os.path.join(Case_Dir,DIR)) and "Agent" in DIR]
     iters=list(set([int(POL.split("_")[-1].split(".")[0]) for POL in Pols]))
