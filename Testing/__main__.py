@@ -112,7 +112,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
 
 
         C, t = Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[
-            0, max_time], dt=0.01)
+            0, max_time], dt=0.1)
         ax[i,0].plot(t,C[:,0:Models.__len__()])
         ax[i,0].legend([Mod._name for Mod in Models])
         Iter=Pol_Cases[Models[j]._name][i].split("_")[-1].split(".")[0]
@@ -378,7 +378,7 @@ if __name__ == "__main__":
     
     Test_Condition={"Glucose":90,
                     "Starch":10,
-                    "Agents":[0.01]}
+                    "Agents":[0.001]}
         
     ##########################################
 

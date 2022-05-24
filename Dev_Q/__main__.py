@@ -76,7 +76,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "Glucose_Max_C": 100,
         "Starch_Max_C": 10,
         "Amylase_Max_C": 1,
-        "Agent_Max_C": 10,
+        "Agent_Max_C": 1,
         "alpha": alpha,
         "STATES":("Glucose","Starch","Agent")
 

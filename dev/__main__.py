@@ -77,7 +77,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
         "Glucose_Max_C": 100,
         "Starch_Max_C": 10,
         "Amylase_Max_C": 1,
-        "Agent_Max_C": 10,
+        "Agent_Max_C": 1,
         "alpha": alpha,
         "STATES":("Glucose","Starch","Agent")
 
@@ -133,14 +133,15 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
 
         for l in range(Number_of_Models):
             Models[l].f_values = []
-        
+            Models[l].SAPR=[]
         C,t=Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[
                                        0, max_time], dt=0.1)
         for l in range(Number_of_Models):
+            for visit in Models[l].SAPR:
             # Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(C[-1,i]-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
-            Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(C[-1,l]-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
+                Models[l].Q[(visit)]+=alpha*(C[-1,l]-Models[l].Q[(visit)])
 
-            Models[l].Policy.Policy[(Models[l].Init_State)]=np.argmax([Models[l].Q[(Models[l].Init_State,v)] for v in range(Params["Num_Amylase_States"])])
+                Models[l].Policy.Policy[(visit[0])]=np.argmax([Models[l].Q[(visit[0],v)] for v in range(Params["Num_Amylase_States"])])
 
         
         print(f"Iter: {Outer_Counter}")
@@ -223,10 +224,14 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
         if t == 0:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x)(Models[i].InitAction, 1)
+            Models[i].SAPR.append((Models[i].State, Models[i].InitAction))
 
         else:
             Models[i].reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy.get_action(Models[i].State), 1)
+            if (Models[i].State, Models[i].Policy.get_action(Models[i].State)) not in Models[i].SAPR:
+                Models[i].SAPR.append((Models[i].State, Models[i].Policy.get_action(Models[i].State)))
+
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
             Models[i].f_values.append(-10)
@@ -234,6 +239,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
             Models[i].f_values.append(Sols[i].objective_value)
+
     
     ### Writing the balance equations
 
@@ -262,6 +268,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params):
 
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
+
 
 
     
