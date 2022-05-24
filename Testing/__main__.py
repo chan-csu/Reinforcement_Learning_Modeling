@@ -24,7 +24,7 @@ CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_Conditions=None,max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.1, Starting_Policy: str = "Random"):
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_Conditions=None,max_time: int = 1000, Dil_Rate: float = 0.1, alpha: float = 0.1, Starting_Policy: str = "Random"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -78,6 +78,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
         "Amylase_Max_C": 1,
         "Agent_Max_C": 10,
         "alpha": alpha,
+        "STATES":("Glucose","Starch","Agent")
 
 
     }
@@ -87,9 +88,9 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
 
-    for i in range(Number_of_Models):
-        Init_C[i] = 0.001
-        # Models[i].solver = "cplex"
+    # for i in range(Number_of_Models):
+    #     Init_C[i] = 0.001
+    #     # Models[i].solver = "cplex"
 
     # ----------------------------------------------------------------------------
 
@@ -97,7 +98,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
     # Initial Policy is set to a random policy
 
     States = [(i, j, k) for i in range(Params["Num_Glucose_States"]) for j in range(
-        Params["Num_Starch_States"]) for k in range(Params["Num_Amylase_States"])]
+        Params["Num_Starch_States"]) for k in range(Params["Number_of_Agent_States"])]
 
     fig,ax=plt.subplots(Pol_Cases[Models[0]._name].__len__(),2)
     for i in range(Pol_Cases[Models[0]._name].__len__()):
@@ -111,13 +112,13 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()],Pol_Cases=None ,Test_
 
 
         C, t = Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_Dict, t_span=[
-            0, max_time], dt=0.1)
+            0, max_time], dt=0.01)
         ax[i,0].plot(t,C[:,0:Models.__len__()])
         ax[i,0].legend([Mod._name for Mod in Models])
         Iter=Pol_Cases[Models[j]._name][i].split("_")[-1].split(".")[0]
         ax[i,0].set_title(f"Concentration Profile of Agents: Iter {Iter}")
         ax[i,1].set_title(f"Metabolite Concentrations")
-        ax[i,1].plot(t,C[:,-1])
+        ax[i,1].plot(t,C[:,-2])
 
 
 
@@ -171,8 +172,8 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     Sols = list([0 for i in range(Models.__len__())])
 
     for i in range(Models.__len__()):
-        Models[i].State = Descretize_Concs(
-            C[Params["Glucose_Index"]], C[Params["Starch_Index"]], C[Params["Amylase_Ind"]], Params)
+        Models[i].State = Descretize_Concs(Params,
+            (C[Params["Glucose_Index"]], C[Params["Starch_Index"]], *C[Params["Agents_Index"]] ))
 
     for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
         for i in range(Models.__len__()):
@@ -186,12 +187,8 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                                     ].lower_bound = - Glucose_Uptake_Kinetics(C[j+Models.__len__()])
     for i in range(Models.__len__()):
 
-        if t == 0:
-            Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].InitAction, 1)
 
-        else:
-            Models[i].reactions[Params["Model_Amylase_Conc_Index"]
+        Models[i].reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x)(Models[i].Policy.get_action(Models[i].State), 1)
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
@@ -306,24 +303,18 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     return 100*(Compound/(Compound+20))
 
 
-def Descretize_Concs(Glucose: float, Starch: float, Amylase: float, Params):
+def Descretize_Concs(Params,State_Concs):
     """
     This function calculates the state of the reactor
 
 
     """
-
-    Glucose1 = math.floor(Glucose/Params["Glc_Max_C"]*10)
-    Starch1 = math.floor(Starch/Params["Starch_Max_C"]*10)
-    Amylase1 = math.floor(Amylase/Params["Amylase_Max_C"]*10)
-    if Glucose >= Params["Glc_Max_C"]:
-        Glucose1 = 9
-    if Starch >= Params["Starch_Max_C"]:
-        Starch1 = 9
-    if Amylase >= Params["Amylase_Max_C"]:
-        Amylase1 = 9
-
-    return (Glucose1, Starch1, Amylase1)
+    States=Params["STATES"]
+    Descritized=[]
+    for i,s in enumerate(States):
+        Descritized.append(math.floor(State_Concs[i]/Params[s+"_Max_C"]*10)) if State_Concs[i]<Params[s+"_Max_C"] else Descritized.append(9)
+    
+    return tuple(Descritized)
 
 
 def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
@@ -347,17 +338,10 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
             for action in range(Params["Num_Amylase_States"]):
                 Returns_Totall[M][(state, action)] = []
 
-    # Init_C[[Params["Glucose_Index"],
-    #         Params["Starch_Index"],
-    #         Params["Amylase_Ind"]]] = [random.uniform(0, Params["Glc_Max_C"]*1.1),
-    #                                    random.uniform(
-    #                                        0, Params["Starch_Max_C"]*1.1),
-    #                                    random.uniform(0, Params["Amylase_Max_C"]*1.1)]
+
     for i in range(Models.__len__()):
-        Models[i].InitAction = random.choice(
-            range(Params["Num_Amylase_States"]))
-        Models[i].Init_State = Descretize_Concs(
-            Init_C[Params["Glucose_Index"]], Init_C[Params["Starch_Index"]], Init_C[Params["Amylase_Ind"]], Params)
+
+        Models[i].Init_State = Descretize_Concs(Params,(Init_C[Params["Glucose_Index"]], Init_C[Params["Starch_Index"]], *Init_C[Params["Agents_Index"]]))
 
     C, t = dFBA(
         Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
@@ -392,9 +376,9 @@ if __name__ == "__main__":
     
     ### Defining the conditions for testing###
     
-    Test_Condition={"Glucose":100,
+    Test_Condition={"Glucose":90,
                     "Starch":10,
-                    "Amylase":0.1}
+                    "Agents":[0.01]}
         
     ##########################################
 

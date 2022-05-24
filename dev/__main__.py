@@ -56,7 +56,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
     ### or the documentation. 
     
     Mapping_Dict = Build_Mapping_Matrix(Models)
-    Init_C = np.ones((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))
+    Init_C = np.ones((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))/10
     Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))
 
     # The Params are the main part to change from problem to problem
@@ -138,7 +138,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
                                        0, max_time], dt=0.1)
         for l in range(Number_of_Models):
             # Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(C[-1,i]-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
-            Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(C[-1,i]-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
+            Models[l].Q[(Models[l].Init_State,Models[l].InitAction)]+=alpha*(C[-1,l]-Models[l].Q[(Models[l].Init_State,Models[l].InitAction)])
 
             Models[l].Policy.Policy[(Models[l].Init_State)]=np.argmax([Models[l].Q[(Models[l].Init_State,v)] for v in range(Params["Num_Amylase_States"])])
 
@@ -147,7 +147,7 @@ def main(Models: list = [ToyModel.copy(),ToyModel.copy()], max_time: int = 100, 
         print(f"End_Concs: {list([C[-1,i] for i in range(Number_of_Models)])}")
         # print(f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
     ############################
-    # Saving the policy with pickle place holder once in a while
+    # Saving the policy with pickle once in a while
     ############################
         if Outer_Counter % 10000 == 0:
             for i in range(Number_of_Models):
