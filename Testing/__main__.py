@@ -376,15 +376,15 @@ if __name__ == "__main__":
     
     ### Defining the conditions for testing###
     
-    Test_Condition={"Glucose":90,
-                    "Starch":10,
-                    "Agents":[0.001]}
+    Test_Condition={"Glucose":80,
+                    "Starch":0.1,
+                    "Agents":[0.01]}
         
     ##########################################
 
     ###  Agent and Policy Initialization  ###
     Agent_Names=["Agent_0"]
-    Case_Dir=os.path.join(Main_dir,"Cases","Case_4")
+    Case_Dir=os.path.join(Main_dir,"Cases","Case_5")
     Policies={}
     Pols=[DIR for DIR in os.listdir(Case_Dir) if os.path.isfile(os.path.join(Case_Dir,DIR)) and "Agent" in DIR]
     iters=list(set([int(POL.split("_")[-1].split(".")[0]) for POL in Pols]))
