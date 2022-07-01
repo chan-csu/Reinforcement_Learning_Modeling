@@ -1,13 +1,13 @@
 
 # Script for running Community Dynamic Flux Balance Analysis (CDFBA)
 # Written by: Parsa Ghadermazi
-from ast import Param
-from email import iterators
+
 import numpy as np
 import cobra
 import os
 import random
 import matplotlib.pyplot as plt
+import plotext as plx
 import numpy as np
 import math
 import cProfile
@@ -16,6 +16,7 @@ import concurrent.futures
 import multiprocessing
 import pickle
 import itertools
+import pandas
 #import cplex
 from ToyModel import ToyModel
 from dataclasses import dataclass,field
@@ -40,7 +41,7 @@ class Feature_Vector:
         Temp=np.empty((self.State_Dimensions,self.Number_of_Tiling)).astype(np.ndarray)
         for i in range(self.State_Dimensions):
             for j in range(self.Number_of_Tiling):
-                Temp[i,j]=np.linspace(self.State_Ranges[i][0]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],self.State_Ranges[i][1]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],num=self.Number_of_tiles)
+                Temp[i,j]=np.linspace(self.State_Ranges[i][0]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],self.State_Ranges[i][1]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],num=self.Number_of_tiles-1)
 
         self.bin=Temp
 
@@ -114,7 +115,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "alpha": alpha
     }
 
-    Params["State_Inds"]=(0,Params["Glucose_Index"],Params["Starch_Index"])
+    Params["State_Inds"]=[0,1,Params["Glucose_Index"],Params["Starch_Index"]]
     Ranges=[[0,1] for i in range(Number_of_Models)]
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
@@ -131,9 +132,10 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     #         Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
-
+    F={}
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
+        F[Models[i].NAME]=[]
         #Models[i].solver = "cplex"
 
     # ----------------------------------------------------------------------------
@@ -159,23 +161,29 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
 
     Outer_Counter = 0
     # Q initalization ###------------------------------------------------------------
-
     while True:
-
+        
         C, t = Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_span=[
             0, max_time], dt=0.1)
+        
 
-        print(f"Iter: {Outer_Counter}")
-        print(f"End_Concs: {list([C[-1,i] for i in range(Number_of_Models)])}")
-        print(
-            f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
+        for i in range(Models.__len__()):
+            F[Models[i].NAME].append(np.sum(Models[i].f_values))
+        pandas.DataFrame(F).to_csv(os.path.join(Main_dir,"F.csv"))
+        # for i in range(Models.__len__()):
+        #          F[i].append(np.sum(Models[i].f_values))
+        #          plt.plot(range(len(F[i])),F[i])
+        # print(f"Iter: {Outer_Counter}")
+        # print(f"End_Concs: {list([C[-1,i] for i in range(Number_of_Models)])}")
+        # print(
+        #     f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
     ############################
     # Saving the policy with pickle place holder once in a while
     ############################
-        if Outer_Counter % 10000 == 0:
-            for i in range(Number_of_Models):
-                with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
-                    pickle.dump(Models[i].W, f)
+        # if Outer_Counter % 10000 == 0:
+        #     for i in range(Number_of_Models):
+        #         with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
+        #             pickle.dump(Models[i].W, f)
        
         Outer_Counter += 1
 
@@ -223,11 +231,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     for M in Models:
         Temp_O=[]
         for idx in M.Actions:
-                Temp_O.append(np.sum(M.W[M.Features.Get_Feature_Vector((Params["State_Inds"],idx))]))
+                Temp_O.append(np.sum(M.W[M.Features.Get_Feature_Vector((C[Params["State_Inds"]],idx))]))
         if np.random.random()<M.epsilon:
             M.a=np.random.choice(M.Actions)
         else:
             M.a=np.argmax(Temp_O)
+        M.q=Temp_O[M.a]
         
         
     for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
@@ -242,8 +251,8 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                                     ].lower_bound = - Glucose_Uptake_Kinetics(C[j+Models.__len__()])
     for i in range(Models.__len__()):
 
-        # Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-        #                         [i]].lower_bound = (lambda x, a: a*x)(, 1)
+        Models[i].reactions[Params["Model_Amylase_Conc_Index"]
+                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].a, 1)
 
         Sols[i] = Models[i].optimize()
         if Sols[i].status == 'infeasible':
@@ -280,18 +289,16 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
             C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/100
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
-    Next_C = C+dCdt*dt
+    Next_C = C[Params["State_Inds"]]+dCdt[Params["State_Inds"]]*dt
     Next_C[Next_C < 0] = 0
-    Next_State = Descretize_Concs(Params,
-            (Next_C[Params["Glucose_Index"]], Next_C[Params["Starch_Index"]], *Next_C[Params["Agents_Index"]] ))
+
 
     for z in range(Models.__len__()):
-        a = Models[z].InitAction if t == 0 else Models[z].Policy.get_action(
-            Models[z].State)
-        Models[z].Q[(Models[z].State, a)] += Params['alpha']*(Models[z].f_values[-1]+Models[z].Q[(Next_State, np.argmax(
-            [Models[z].Q[(Next_State, v)] for v in range(Params["Num_Amylase_States"])]))]-Models[z].Q[(Models[z].State, a)])
-        Models[z].Policy.Policy[(Models[z].State)] = np.argmax(
-            [Models[z].Q[(Models[z].State, v)] for v in range(Params["Num_Amylase_States"])])
+        Temp_O=[]
+        for idx in M.Actions:
+                Temp_O.append(np.sum(M.W[M.Features.Get_Feature_Vector((C[Params["State_Inds"]],idx))]))
+        qp=np.max(Temp_O)
+        Models[z].W[M.Features.Get_Feature_Vector((Params["State_Inds"], Models[z].a))] += Params['alpha']*(Models[z].f_values[-1]+qp-M.q)
 
     return dCdt
 
@@ -396,7 +403,7 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_s
             *Params["Agents_Index"]]] = [random.uniform(0, Params["Glucose_Max_C"]*1.1),
                                        random.uniform(
                                            0, Params["Starch_Max_C"]*1.1),
-                                       random.uniform(0, Params["Agent_Max_C"]*1.1)]
+                                       random.uniform(0, Params["Agent_Max_C"]*1.1),random.uniform(0, Params["Agent_Max_C"]*1.1)]
 
     C, t = dFBA(
         Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
@@ -427,4 +434,4 @@ if __name__ == "__main__":
     # for i in range(2):
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
-    main([ToyModel.copy()])
+    main([ToyModel.copy(),ToyModel.copy()])
