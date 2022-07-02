@@ -58,7 +58,7 @@ class Feature_Vector:
         return tuple(Index.T)
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.1, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -108,7 +108,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "Num_Starch_States": 10,
         "Num_Amylase_States": 10,
         "Number_of_Agent_States": 10,
-        "Glucose_Max_C": 100,
+        "Glucose_Max_C": 200,
         "Starch_Max_C": 10,
         "Amylase_Max_C": 1,
         "Agent_Max_C": 1,
@@ -134,7 +134,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     Params["Inlet_C"] = Inlet_C
     F={}
     for i in range(Number_of_Models):
-        Init_C[i] = 0.001
+        Init_C[i] = 0.01
         F[Models[i].NAME]=[]
         #Models[i].solver = "cplex"
 
@@ -293,12 +293,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     Next_C[Next_C < 0] = 0
 
 
-    for z in range(Models.__len__()):
+    for z in Models:
         Temp_O=[]
-        for idx in M.Actions:
-                Temp_O.append(np.sum(M.W[M.Features.Get_Feature_Vector((C[Params["State_Inds"]],idx))]))
+        for idx in z.Actions:
+            Temp_O.append(np.sum(z.W[z.Features.Get_Feature_Vector((Next_C,idx))]))
         qp=np.max(Temp_O)
-        Models[z].W[M.Features.Get_Feature_Vector((Params["State_Inds"], Models[z].a))] += Params['alpha']*(Models[z].f_values[-1]+qp-M.q)
+        z.W[z.Features.Get_Feature_Vector((C[Params["State_Inds"]], z.a))] += Params['alpha']*(z.f_values[-1]+qp-z.q)
 
     return dCdt
 
@@ -400,10 +400,10 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_s
 
     Init_C[[Params["Glucose_Index"],
             Params["Starch_Index"],
-            *Params["Agents_Index"]]] = [random.uniform(0, Params["Glucose_Max_C"]*1.1),
+            *Params["Agents_Index"]]] = [random.uniform(Params["Glucose_Max_C"]*0.5, Params["Glucose_Max_C"]*1.5),
                                        random.uniform(
-                                           0, Params["Starch_Max_C"]*1.1),
-                                       random.uniform(0, Params["Agent_Max_C"]*1.1),random.uniform(0, Params["Agent_Max_C"]*1.1)]
+                                           Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5),
+                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5),random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
 
     C, t = dFBA(
         Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
