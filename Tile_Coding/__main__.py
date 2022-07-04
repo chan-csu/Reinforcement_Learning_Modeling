@@ -50,11 +50,8 @@ class Feature_Vector:
         Index[...,-1]=State_Action[1]
         Index[...,1]=np.tile(np.arange(self.Number_of_Tiling),self.State_Dimensions)
         Index[...,0]=np.repeat(range(self.State_Dimensions),self.Number_of_Tiling)
-        BIN=[]
-        for i in range(self.State_Dimensions):
-            for j in range(self.Number_of_Tiling):
-                BIN.append(np.digitize(State_Action[0][i],self.bin[i,j]))
-        Index[...,2]=BIN
+        Index[...,2]=np.array([np.digitize(State_Action[0][i],self.bin[i,j]) for j in range(self.Number_of_Tiling) for i in range(self.State_Dimensions)])
+        
         return tuple(Index.T)
 
 
@@ -128,14 +125,16 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         m.epsilon=0.1
 
 
+
     # Init_C[[Params["Glucose_Index"],
     #         Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
     F={}
     for i in range(Number_of_Models):
-        Init_C[i] = 0.01
+        Init_C[i] = 0.001
         F[Models[i].NAME]=[]
+        F[Models[i].NAME+"_abs_W_max"]=[]
         #Models[i].solver = "cplex"
 
     # ----------------------------------------------------------------------------
@@ -166,24 +165,24 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         C, t = Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_span=[
             0, max_time], dt=0.1)
         
-
         for i in range(Models.__len__()):
             F[Models[i].NAME].append(np.sum(Models[i].f_values))
+            F[Models[i].NAME+"_abs_W_max"].append(np.max(np.abs(Models[i].W)))
         pandas.DataFrame(F).to_csv(os.path.join(Main_dir,"F.csv"))
         # for i in range(Models.__len__()):
         #          F[i].append(np.sum(Models[i].f_values))
         #          plt.plot(range(len(F[i])),F[i])
-        # print(f"Iter: {Outer_Counter}")
-        # print(f"End_Concs: {list([C[-1,i] for i in range(Number_of_Models)])}")
-        # print(
-        #     f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
+        print(f"Iter: {Outer_Counter}")
+        print(f"End_Concs: {list([C[-1,i] for i in range(Number_of_Models)])}")
+        print(
+            f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
     ############################
     # Saving the policy with pickle place holder once in a while
     ############################
-        # if Outer_Counter % 10000 == 0:
-        #     for i in range(Number_of_Models):
-        #         with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
-        #             pickle.dump(Models[i].W, f)
+        if Outer_Counter % 1000 == 0:
+            for i in range(Number_of_Models):
+                with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
+                    pickle.dump(Models[i].W, f)
        
         Outer_Counter += 1
 
@@ -228,39 +227,31 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     C[C < 0] = 0
     dCdt = np.zeros(C.shape)
     Sols = list([0 for i in range(Models.__len__())])
-    for M in Models:
-        Temp_O=[]
-        for idx in M.Actions:
-                Temp_O.append(np.sum(M.W[M.Features.Get_Feature_Vector((C[Params["State_Inds"]],idx))]))
+    for i,M in enumerate(Models):
+        Temp_O=np.array([np.sum(M.W[M.Features.Get_Feature_Vector((C[Params["State_Inds"]],idx))]) for idx in M.Actions])
         if np.random.random()<M.epsilon:
             M.a=np.random.choice(M.Actions)
         else:
             M.a=np.argmax(Temp_O)
         M.q=Temp_O[M.a]
-        
-        
-    for j in range(Mapping_Dict["Mapping_Matrix"].shape[0]):
-        for i in range(Models.__len__()):
-            if Mapping_Dict["Mapping_Matrix"][j, i] != Params["Model_Glc_Conc_Index"][i]:
-                if Mapping_Dict["Mapping_Matrix"][j, i] != Params["Model_Amylase_Conc_Index"][i]:
-                    pass
-                    # Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
-                    #                     ].lower_bound = - General_Uptake_Kinetics(C[j+Models.__len__()])
-            else:
-                Models[i].reactions[Mapping_Dict["Mapping_Matrix"][j, i]
-                                    ].lower_bound = - Glucose_Uptake_Kinetics(C[j+Models.__len__()])
-    for i in range(Models.__len__()):
 
-        Models[i].reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x)(Models[i].a, 1)
-
+        M.reactions[Params["Model_Amylase_Conc_Index"]
+                                [i]].lower_bound = (lambda x, a: a*x)(M.a, 1)
+        
+        M.reactions[Params["Model_Glc_Conc_Index"][i]
+                                    ].lower_bound = - Glucose_Uptake_Kinetics(C[Params["Glucose_Index"]])
+        
         Sols[i] = Models[i].optimize()
+
         if Sols[i].status == 'infeasible':
             Models[i].f_values.append(-10)
             dCdt[i] = 0
+
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
             Models[i].f_values.append(Sols[i].objective_value)
+
+
 
     ### Writing the balance equations
 
@@ -272,14 +263,6 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                 else:
                     dCdt[i+Models.__len__()] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                     [i, j]]*C[j]
-
-            if Mapping_Dict["Ex_sp"][i] == "Glc_Ex":
-                if Sols[j].status == 'infeasible':
-                    pass
-
-                else:
-
-                    dCdt[i+Models.__len__()] +=Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"][i, j]]*C[j]
 
     dCdt[Params["Glucose_Index"]] += Starch_Degradation_Kinetics(
                         C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
@@ -294,10 +277,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
 
 
     for z in Models:
-        Temp_O=[]
-        for idx in z.Actions:
-            Temp_O.append(np.sum(z.W[z.Features.Get_Feature_Vector((Next_C,idx))]))
-        qp=np.max(Temp_O)
+
+        qp=np.array([np.sum(z.W[z.Features.Get_Feature_Vector((Next_C,idx))]) for idx in z.Actions]).max()
+ 
         z.W[z.Features.Get_Feature_Vector((C[Params["State_Inds"]], z.a))] += Params['alpha']*(z.f_values[-1]+qp-z.q)
 
     return dCdt
