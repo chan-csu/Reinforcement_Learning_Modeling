@@ -7,7 +7,6 @@ import cobra
 import os
 import random
 import matplotlib.pyplot as plt
-import plotext as plx
 import numpy as np
 import math
 import cProfile
@@ -50,8 +49,7 @@ class Feature_Vector:
         Index[...,-1]=State_Action[1]
         Index[...,1]=np.tile(np.arange(self.Number_of_Tiling),self.State_Dimensions)
         Index[...,0]=np.repeat(range(self.State_Dimensions),self.Number_of_Tiling)
-        Index[...,2]=np.hstack(np.sum(np.subtract(self.bin,State_Action[0][:,np.newaxis,np.newaxis])<0,axis=2).T)
-        
+        Index[...,2]=np.hstack(np.vstack(np.sum(np.subtract(self.bin,State_Action[0][:,np.newaxis,np.newaxis])<0,axis=2)))
         return tuple(Index.T)
 
 
