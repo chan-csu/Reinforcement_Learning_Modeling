@@ -38,10 +38,10 @@ class Feature_Vector:
         self._Empty_Feature_vect=np.zeros((self.State_Dimensions,self.Number_of_Tiling,self.Number_of_tiles,self.Number_of_actions))
         self.Shift_Vect=[(i[1]-i[0])/self.Number_of_tiles/self.Number_of_Tiling for i in self.State_Ranges]
         self._Base_Shift_Vect=np.array([2*i+1 for i in range(self.Number_of_Tiling)]) 
-        Temp=np.empty((self.State_Dimensions,self.Number_of_Tiling)).astype(np.ndarray)
+        Temp=np.ndarray((self.State_Dimensions,self.Number_of_Tiling,self.Number_of_tiles-1),dtype=float)
         for i in range(self.State_Dimensions):
             for j in range(self.Number_of_Tiling):
-                Temp[i,j]=np.linspace(self.State_Ranges[i][0]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],self.State_Ranges[i][1]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],num=self.Number_of_tiles-1)
+                Temp[i,j,:]=np.linspace(self.State_Ranges[i][0]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],self.State_Ranges[i][1]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],num=self.Number_of_tiles-1)
 
         self.bin=Temp
 
@@ -50,12 +50,12 @@ class Feature_Vector:
         Index[...,-1]=State_Action[1]
         Index[...,1]=np.tile(np.arange(self.Number_of_Tiling),self.State_Dimensions)
         Index[...,0]=np.repeat(range(self.State_Dimensions),self.Number_of_Tiling)
-        Index[...,2]=np.array([np.digitize(State_Action[0][i],self.bin[i,j]) for j in range(self.Number_of_Tiling) for i in range(self.State_Dimensions)])
+        Index[...,2]=np.hstack(np.sum(np.subtract(self.bin,State_Action[0][:,np.newaxis,np.newaxis])<0,axis=2).T)
         
         return tuple(Index.T)
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.001, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -112,7 +112,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "alpha": alpha
     }
 
-    Params["State_Inds"]=[0,1,Params["Glucose_Index"],Params["Starch_Index"]]
+    Params["State_Inds"]=[0,Params["Glucose_Index"],Params["Starch_Index"]]
     Ranges=[[0,1] for i in range(Number_of_Models)]
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
@@ -168,6 +168,9 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         for i in range(Models.__len__()):
             F[Models[i].NAME].append(np.sum(Models[i].f_values))
             F[Models[i].NAME+"_abs_W_max"].append(np.max(np.abs(Models[i].W)))
+            if np.max(np.abs(Models[i].W))>10000:
+                pass
+
         pandas.DataFrame(F).to_csv(os.path.join(Main_dir,"F.csv"))
         # for i in range(Models.__len__()):
         #          F[i].append(np.sum(Models[i].f_values))
@@ -385,7 +388,7 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_s
             *Params["Agents_Index"]]] = [random.uniform(Params["Glucose_Max_C"]*0.5, Params["Glucose_Max_C"]*1.5),
                                        random.uniform(
                                            Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5),
-                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5),random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
+                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
 
     C, t = dFBA(
         Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
@@ -416,4 +419,5 @@ if __name__ == "__main__":
     # for i in range(2):
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
-    main([ToyModel.copy(),ToyModel.copy()])
+    # cProfile.run("","Profile")
+    main([ToyModel.copy()])

@@ -378,7 +378,7 @@ def Generate_Episodes_With_State(dFBA, States, Params, Init_C, Models, Mapping_D
             *Params["Agents_Index"]]] = [random.uniform(0, Params["Glucose_Max_C"]*1.1),
                                        random.uniform(
                                            0, Params["Starch_Max_C"]*1.1),
-                                       random.uniform(0, Params["Agent_Max_C"]*1.1)]
+                                       random.uniform(0, Params["Agent_Max_C"]*1.1),random.uniform(0, Params["Agent_Max_C"]*1.1)]
     for i in range(Models.__len__()):
         Models[i].InitAction = random.choice(
             range(Params["Num_Amylase_States"]))
@@ -412,4 +412,4 @@ if __name__ == "__main__":
     # for i in range(2):
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
-    main([ToyModel.copy()])
+    main([ToyModel.copy(),ToyModel.copy()])
