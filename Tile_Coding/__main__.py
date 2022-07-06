@@ -41,19 +41,19 @@ class Feature_Vector:
         for i in range(self.State_Dimensions):
             for j in range(self.Number_of_Tiling):
                 Temp[i,j,:]=np.linspace(self.State_Ranges[i][0]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],self.State_Ranges[i][1]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],num=self.Number_of_tiles-1)
-
-        self.bin=Temp
-
+        self.bin=Temp.copy()
+    
     def Get_Feature_Vector(self,State_Action):
         Index=np.zeros((self.State_Dimensions*self.Number_of_Tiling,4),dtype=int)
         Index[...,-1]=State_Action[1]
         Index[...,1]=np.tile(np.arange(self.Number_of_Tiling),self.State_Dimensions)
         Index[...,0]=np.repeat(range(self.State_Dimensions),self.Number_of_Tiling)
-        Index[...,2]=np.hstack(np.vstack(np.sum(np.subtract(self.bin,State_Action[0][:,np.newaxis,np.newaxis])<0,axis=2)))
+        Index[...,2]=np.hstack(np.sum(np.subtract(self.bin,np.array(State_Action[0])[:,np.newaxis,np.newaxis])<0,axis=2))        
         return tuple(Index.T)
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.001, Starting_Q: str = "FBA"):
+
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -120,7 +120,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         m.alpha=Params["alpha"]
         m.W=m.Features._Empty_Feature_vect.copy()
         m.Actions=range(Params["Num_Amylase_States"])
-        m.epsilon=0.1
+        m.epsilon=0.01
 
 
 
