@@ -107,11 +107,12 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "Starch_Max_C": 10,
         "Amylase_Max_C": 1,
         "Agent_Max_C": 1,
-        "alpha": alpha
+        "alpha": alpha,
+        "beta":alpha
     }
 
     Params["State_Inds"]=[0,Params["Glucose_Index"],Params["Starch_Index"]]
-    Ranges=[[0,1] for i in range(Number_of_Models)]
+    Ranges=[[0,1000] for i in range(Number_of_Models)]
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
     
@@ -121,6 +122,8 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         m.W=m.Features._Empty_Feature_vect.copy()
         m.Actions=range(Params["Num_Amylase_States"])
         m.epsilon=0.01
+        m.beta=Params["beta"]
+        m.R=0
 
 
 
@@ -166,8 +169,8 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         for i in range(Models.__len__()):
             F[Models[i].NAME].append(np.sum(Models[i].f_values))
             F[Models[i].NAME+"_abs_W_max"].append(np.max(np.abs(Models[i].W)))
-            if np.max(np.abs(Models[i].W))>10000:
-                pass
+        #     if np.max(np.abs(Models[i].W))>10000:
+        #         pass
 
         pandas.DataFrame(F).to_csv(os.path.join(Main_dir,"F.csv"))
         # for i in range(Models.__len__()):
@@ -278,10 +281,13 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
 
 
     for z in Models:
+        
 
         qp=np.array([np.sum(z.W[z.Features.Get_Feature_Vector((Next_C,idx))]) for idx in z.Actions]).max()
- 
-        z.W[z.Features.Get_Feature_Vector((C[Params["State_Inds"]], z.a))] += Params['alpha']*(z.f_values[-1]+qp-z.q)
+
+        delta=z.f_values[-1]-z.R+qp-z.q
+        z.R+=z.beta*delta
+        z.W[z.Features.Get_Feature_Vector((C[Params["State_Inds"]], z.a))] += Params['alpha']*delta
 
     return dCdt
 
