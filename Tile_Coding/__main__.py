@@ -111,7 +111,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         "beta":alpha
     }
 
-    Params["State_Inds"]=[0,Params["Glucose_Index"],Params["Starch_Index"]]
+    Params["State_Inds"]=[0,1,Params["Glucose_Index"],Params["Starch_Index"]]
     Ranges=[[0,1000] for i in range(Number_of_Models)]
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
@@ -392,6 +392,7 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_s
             *Params["Agents_Index"]]] = [random.uniform(Params["Glucose_Max_C"]*0.5, Params["Glucose_Max_C"]*1.5),
                                        random.uniform(
                                            Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5),
+                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5),
                                        random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
 
     C, t = dFBA(
@@ -424,4 +425,4 @@ if __name__ == "__main__":
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
     # cProfile.run("","Profile")
-    main([ToyModel.copy()])
+    main([ToyModel.copy(),ToyModel.copy()])
