@@ -99,6 +99,8 @@ Biomass_1.lower_bound = 0
 Biomass_1.upper_bound = 1000
 Toy1.add_reaction(Biomass_1)
 
+Toy1.objective='OBJ_sp1'
+
 
 
 ### ADP Production From Catabolism ###
@@ -112,7 +114,7 @@ S = Metabolite('S', compartment='c')
 EX_S_sp2.add_metabolites({S: -1})
 EX_S_sp2.lower_bound = -10
 EX_S_sp2.upper_bound = 0
-Toy1.add_reaction(EX_S_sp2)
+Toy2.add_reaction(EX_S_sp2)
 
 
 EX_A_sp2 = Reaction('EX_A_sp2')
@@ -128,7 +130,7 @@ B = Metabolite('B', compartment='c')
 EX_B_sp2.add_metabolites({B: -1})
 EX_B_sp2.lower_bound = -100
 EX_B_sp2.upper_bound = 100
-Toy1.add_reaction(EX_B_sp2)
+Toy2.add_reaction(EX_B_sp2)
 
 
 
@@ -185,8 +187,11 @@ Biomass_2.add_metabolites({biomass_sp2:-1})
 Biomass_2.lower_bound = 0
 Biomass_2.upper_bound = 1000
 Toy2.add_reaction(Biomass_2)
+Toy2.objective="OBJ_sp2"
 
 
 if __name__ == '__main__':
     print(Toy1.optimize().fluxes)
     print(Toy1.exchanges)
+    print(Toy2.optimize().fluxes)
+    print(Toy2.exchanges)
