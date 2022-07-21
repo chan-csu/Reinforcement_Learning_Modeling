@@ -20,6 +20,7 @@ import pandas
 from ToyModel import ToyModel
 from dataclasses import dataclass,field
 CORES = multiprocessing.cpu_count()
+import ray
 
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -52,7 +53,7 @@ class Feature_Vector:
         return tuple(Index.T)
 
 
-
+@ray.remote
 def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA",Episode_Per_Run=5):
     """
     This is the main function for running dFBA.
@@ -429,13 +430,18 @@ if __name__ == "__main__":
 
     # cProfile.run("","Profile")
     Number_Of_Runs=50
-    Episodes_Per_Run=5000
+    Episodes_Per_Run=1000
     Num_of_Models=1
     Perf=np.zeros((Number_Of_Runs,Episodes_Per_Run,Num_of_Models))
+    Ind_Runs=[]
+    ray.init()
     for i in range(Number_Of_Runs):
-        Ms,f=main(list([ToyModel.copy() for _ in range(Num_of_Models)]),Episode_Per_Run=Episodes_Per_Run)
-        for ind,j in enumerate(Ms):
-            Perf[i,:,ind]=f[j.NAME]
-    
+        Ind_Runs.append(main.remote(list([ToyModel.copy() for _ in range(Num_of_Models)]),Episode_Per_Run=Episodes_Per_Run))
+        # for ind,j in enumerate(Ms):
+        #     Perf[i,:,ind]=f[j.NAME]
+    Results=ray.get(Ind_Runs)
+    for i in range(Number_Of_Runs):
+        for j in range(Num_of_Models):
+            Perf[i,:,j]=Results[i][1][Results[i][0][j].NAME]
     plt.plot(np.average(Perf,axis=0))
     plt.show()
