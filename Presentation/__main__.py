@@ -16,7 +16,7 @@ import multiprocessing
 import pickle
 import itertools
 import pandas
-#import cplex
+# import cplex
 from ToyModel import ToyModel
 from dataclasses import dataclass,field
 CORES = multiprocessing.cpu_count()
@@ -140,7 +140,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         Init_C[i] = 0.001
         F[Models[i].NAME]=[]
         F[Models[i].NAME+"_abs_W_max"]=[]
-        #Models[i].solver = "cplex"
+        # Models[i].solver = "cplex"
 
     # ----------------------------------------------------------------------------
 
@@ -431,7 +431,7 @@ if __name__ == "__main__":
     # cProfile.run("","Profile")
     Number_Of_Runs=50
     Episodes_Per_Run=1000
-    Num_of_Models=1
+    Num_of_Models=2
     Perf=np.zeros((Number_Of_Runs,Episodes_Per_Run,Num_of_Models))
     Ind_Runs=[]
     ray.init()
@@ -440,8 +440,10 @@ if __name__ == "__main__":
         # for ind,j in enumerate(Ms):
         #     Perf[i,:,ind]=f[j.NAME]
     Results=ray.get(Ind_Runs)
+    with open(os.path.join(Main_dir, "Outputs", "Sim_Res_2_A"), "wb") as f:
+            pickle.dump(Results, f)
     for i in range(Number_Of_Runs):
         for j in range(Num_of_Models):
             Perf[i,:,j]=Results[i][1][Results[i][0][j].NAME]
     plt.plot(np.average(Perf,axis=0))
-    plt.show()
+    plt.savefig("TwoAgents.jpeg")
