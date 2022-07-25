@@ -116,7 +116,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     Params["State_Inds"].append(Params["Glucose_Index"])
     Params["State_Inds"].append(Params["Starch_Index"])
 
-    Ranges=[[0,1000] for i in range(Number_of_Models)]
+    Ranges=[[0,100] for i in range(Number_of_Models)]
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
     
@@ -429,8 +429,8 @@ if __name__ == "__main__":
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
     # cProfile.run("","Profile")
-    Number_Of_Runs=50
-    Episodes_Per_Run=1000
+    Number_Of_Runs=8
+    Episodes_Per_Run=4000
     Num_of_Models=1
     Perf=np.zeros((Number_Of_Runs,Episodes_Per_Run,Num_of_Models))
     Ind_Runs=[]
