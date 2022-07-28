@@ -93,7 +93,7 @@ ToyModel.objective = 'X_Ex'
 ### Amylase Production ###
 Amylase_Prod = Reaction('Amylase_Prod')
 Amylase = Metabolite('Amylase', compartment='c')
-Amylase_Prod.add_metabolites({S_x: -1, ATP: -1, ADP: 1, Amylase: 1})
+Amylase_Prod.add_metabolites({S_x: -1, ATP: -5, ADP: 5, Amylase: 1})
 Amylase_Prod.lower_bound = 0
 Amylase_Prod.upper_bound = 1000
 ToyModel.add_reaction(Amylase_Prod)
@@ -101,7 +101,7 @@ ToyModel.add_reaction(Amylase_Prod)
 ### Amylase Exchange ###
 Amylase_Ex = Reaction('Amylase_Ex')
 Amylase_Ex.add_metabolites({Amylase: -1})
-Amylase_Ex.lower_bound = 1
+Amylase_Ex.lower_bound = 0
 Amylase_Ex.upper_bound = 1000
 ToyModel.add_reaction(Amylase_Ex)
 

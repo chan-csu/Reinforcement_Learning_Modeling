@@ -125,7 +125,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         m.alpha=Params["alpha"]
         m.W=m.Features._Empty_Feature_vect.copy()
         m.Actions=range(Params["Num_Amylase_States"])
-        m.epsilon=0.05
+        m.epsilon=0.01
         m.beta=Params["beta"]
         m.R=0
 
@@ -245,7 +245,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         M.q=Temp_O[M.a]
 
         M.reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x)(M.a, 1)
+                                [i]].lower_bound = (lambda x, a: a*x)(M.a, 5)
         
         M.reactions[Params["Model_Glc_Conc_Index"][i]
                                     ].lower_bound = - Glucose_Uptake_Kinetics(C[Params["Glucose_Index"]])
@@ -254,7 +254,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
 
     for i,M in enumerate(Models):  
         if Sols[i].status == 'infeasible':
-            Models[i].f_values.append(0)
+            Models[i].f_values.append(-100)
             dCdt[i] = 0
 
         else:
@@ -430,7 +430,7 @@ if __name__ == "__main__":
 
     # cProfile.run("","Profile")
     Number_Of_Runs=8
-    Episodes_Per_Run=50000
+    Episodes_Per_Run=1000
     Num_of_Models=1
     Perf=np.zeros((Number_Of_Runs,Episodes_Per_Run,Num_of_Models))
     Ind_Runs=[]
