@@ -116,7 +116,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     Params["State_Inds"].append(Params["Glucose_Index"])
     Params["State_Inds"].append(Params["Starch_Index"])
 
-    Ranges=[[0,1000] for i in range(Number_of_Models)]
+    Ranges=[[0,100] for i in range(Number_of_Models)]
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
     
@@ -245,7 +245,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         M.q=Temp_O[M.a]
 
         M.reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x)(M.a, 5)
+                                [i]].lower_bound = (lambda x, a: a*x)(M.a, 1)
         
         M.reactions[Params["Model_Glc_Conc_Index"][i]
                                     ].lower_bound = - Glucose_Uptake_Kinetics(C[Params["Glucose_Index"]])
@@ -254,7 +254,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
 
     for i,M in enumerate(Models):  
         if Sols[i].status == 'infeasible':
-            Models[i].f_values.append(-100)
+            Models[i].f_values.append(0)
             dCdt[i] = 0
 
         else:
@@ -430,7 +430,7 @@ if __name__ == "__main__":
 
     # cProfile.run("","Profile")
     Number_Of_Runs=8
-    Episodes_Per_Run=1000
+    Episodes_Per_Run=5000
     Num_of_Models=1
     Perf=np.zeros((Number_Of_Runs,Episodes_Per_Run,Num_of_Models))
     Ind_Runs=[]
