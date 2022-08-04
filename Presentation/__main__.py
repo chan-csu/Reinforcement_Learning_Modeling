@@ -431,7 +431,7 @@ if __name__ == "__main__":
     # cProfile.run("","Profile")
     Number_Of_Runs=8
     Episodes_Per_Run=5000
-    Num_of_Models=1
+    Num_of_Models=2
     Perf=np.zeros((Number_Of_Runs,Episodes_Per_Run,Num_of_Models))
     Ind_Runs=[]
     ray.init()
