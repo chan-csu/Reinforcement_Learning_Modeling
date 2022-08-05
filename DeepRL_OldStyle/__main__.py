@@ -8,49 +8,33 @@ import os
 import random
 import matplotlib.pyplot as plt
 import numpy as np
-import math
-import cProfile
-import pstats
-import concurrent.futures
 import multiprocessing
 import pickle
-import itertools
 import pandas
 #import cplex
 from ToyModel import ToyModel
-from dataclasses import dataclass,field
-CORES = multiprocessing.cpu_count()
+import torch
+import torch.nn as nn
+import torch.optim as optim
+NUMBER_OF_BATCHES=50
+BATCH_SIZE=50
+HIDDEN_SIZE=100
 
+CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-@dataclass
-class Feature_Vector:
-    Number_of_tiles: int =10
-    Number_of_Tiling:int =10
-    State_Dimensions: int=2
-    State_Ranges:list= field(default_factory=lambda:[[2,2],[1,1]])
-    Number_of_actions:int=3
-    
-    def __post_init__(self):
-        
-        self._Empty_Feature_vect=np.zeros((self.State_Dimensions,self.Number_of_Tiling,self.Number_of_tiles,self.Number_of_actions))
-        self.Shift_Vect=[(i[1]-i[0])/self.Number_of_tiles/self.Number_of_Tiling for i in self.State_Ranges]
-        self._Base_Shift_Vect=np.array([2*i+1 for i in range(self.Number_of_Tiling)]) 
-        Temp=np.ndarray((self.State_Dimensions,self.Number_of_Tiling,self.Number_of_tiles-1),dtype=float)
-        for i in range(self.State_Dimensions):
-            for j in range(self.Number_of_Tiling):
-                Temp[i,j,:]=np.linspace(self.State_Ranges[i][0]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],self.State_Ranges[i][1]+self._Base_Shift_Vect[j]*(i+1)*self.Shift_Vect[i],num=self.Number_of_tiles-1)
-        self.bin=Temp.copy()
-    
-    def Get_Feature_Vector(self,State_Action):
-        Index=np.zeros((self.State_Dimensions*self.Number_of_Tiling,4),dtype=int)
-        Index[...,-1]=State_Action[1]
-        Index[...,1]=np.tile(np.arange(self.Number_of_Tiling),self.State_Dimensions)
-        Index[...,0]=np.repeat(range(self.State_Dimensions),self.Number_of_Tiling)
-        Index[...,2]=np.hstack(np.sum(np.subtract(self.bin,np.array(State_Action[0])[:,np.newaxis,np.newaxis])<0,axis=2))        
-        return tuple(Index.T)
+class Net(nn.Module):
+    def __init__(self, obs_size, hidden_size, n_actions):
+        super(Net, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_size, hidden_size),
+            nn.Linear(hidden_size, n_actions),
+            nn.ReLU(),
+        )
 
+    def forward(self, x):
+        return self.net(x)
 
 
 def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
@@ -117,13 +101,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     Ranges.append([0,Params["Starch_Max_C"]])
     
     for m in Models:
-        m.Features=Feature_Vector(10,10,Number_of_Models+2,Ranges,Params["Num_Amylase_States"])
-        m.alpha=Params["alpha"]
-        m.W=m.Features._Empty_Feature_vect.copy()
-        m.Actions=range(Params["Num_Amylase_States"])
-        m.epsilon=0.01
-        m.beta=Params["beta"]
-        m.R=0
+        m.Policy=Net(len(m.observation), HIDDEN_SIZE, len(m.actions))
 
 
 
@@ -138,51 +116,18 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         F[Models[i].NAME+"_abs_W_max"]=[]
         #Models[i].solver = "cplex"
 
-    # ----------------------------------------------------------------------------
-
-    # Policy initialization ###--------------------------------------------------
-    # Initial Policy is set to a random policy
-
-
-    if not os.path.exists(os.path.join(Main_dir, "Outputs")):
-        os.mkdir(os.path.join(Main_dir, "Outputs"))
-
-    for i in range(Number_of_Models):
-        if Starting_Q == "FBA":
-            pass 
-        else:
-            
-            with open(Starting_Q[i], "rb") as f:
-                Models[i].W= pickle.load(f)
-             
-        
-        with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_0.pkl"), "wb") as f:
-            pickle.dump(Models[i].W, f)
 
     Outer_Counter = 0
     # Q initalization ###------------------------------------------------------------
-    while True:
+    for _ in range(NUMBER_OF_BATCHES):
         
-        C, t = Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_span=[
-            0, max_time], dt=0.1)
+        
         
         for i in range(Models.__len__()):
             F[Models[i].NAME].append(np.sum(Models[i].f_values))
             F[Models[i].NAME+"_abs_W_max"].append(np.max(np.abs(Models[i].W)))
-        #     if np.max(np.abs(Models[i].W))>10000:
-        #         pass
 
-        pandas.DataFrame(F).to_csv(os.path.join(Main_dir,"F.csv"))
-        # for i in range(Models.__len__()):
-        #          F[i].append(np.sum(Models[i].f_values))
-        #          plt.plot(range(len(F[i])),F[i])
-        print(f"Iter: {Outer_Counter}")
-        print(f"End_Concs: {list([C[-1,i] for i in range(Number_of_Models)])}")
-        print(
-            f"Returns: {list([np.sum(Models[i].f_values) for i in range(Number_of_Models)])}")
-    ############################
-    # Saving the policy with pickle place holder once in a while
-    ############################
+
         if Outer_Counter % 1000 == 0:
             for i in range(Number_of_Models):
                 with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
@@ -418,6 +363,25 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_s
 
     # plt.show()
 
+def filter_batch(batch, percentile):
+    rewards = list(map(lambda s: s.reward, batch))
+    reward_bound = np.percentile(rewards, percentile)
+    reward_mean = float(np.mean(rewards))
+
+    train_obs = []
+    train_act = []
+    for example in batch:
+        if example.reward < reward_bound:
+            continue
+        train_obs.extend(map(lambda step: step.observation, example.steps))
+        train_act.extend(map(lambda step: step.action, example.steps))
+
+    train_obs_v = torch.FloatTensor(train_obs)
+    train_act_v = torch.LongTensor(train_act)
+    return train_obs_v, train_act_v, reward_bound, reward_mean
+
+
+
 
 if __name__ == "__main__":
     # Init_Pols=[]
@@ -426,3 +390,4 @@ if __name__ == "__main__":
 
     # cProfile.run("","Profile")
     main([ToyModel.copy(),ToyModel.copy()])
+
