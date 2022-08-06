@@ -18,11 +18,14 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import namedtuple
 import ray
+from sklearn.preprocessing import StandardScaler
 
-NUMBER_OF_BATCHES=50
+Scaler=StandardScaler()
+
+NUMBER_OF_BATCHES=100
 BATCH_SIZE=8
-HIDDEN_SIZE=100
-PERCENTILE=70
+HIDDEN_SIZE=20
+PERCENTILE=95
 CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
@@ -32,16 +35,26 @@ class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
         super(Net, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, hidden_size),
+            nn.Linear(obs_size, hidden_size),   
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, n_actions),
-            nn.ReLU(),
+            
         )
 
     def forward(self, x):
         return self.net(x)
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 10, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 50, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -99,7 +112,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 10, 
         "beta":alpha
     }
 
-    Params["State_Inds"]=[0,1,Params["Glucose_Index"],Params["Starch_Index"]]
+    Params["State_Inds"]=[0,Params["Glucose_Index"],Params["Starch_Index"]]
     Ranges=[[0,1000] for i in range(Number_of_Models)]
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
@@ -109,7 +122,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 10, 
         m.actions=[Params["Model_Amylase_Conc_Index"][ind]]
         m.Policy=Net(len(m.observation), HIDDEN_SIZE, len(m.actions))
         m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
-        m.Net_Obj=nn.MSELoss(size_average=None, reduce=None, reduction='mean')
+        m.Net_Obj=nn.MSELoss()
     
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
@@ -128,7 +141,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 10, 
             obs_v, acts_v, reward_b, reward_m=filter_batch(Batch_Out[index], PERCENTILE)
             Model.optimizer.zero_grad()
             action_scores_v = Model.Policy(obs_v)
-            loss_v = m.Net_Obj(action_scores_v, acts_v)
+            loss_v = Model.Net_Obj(action_scores_v, acts_v)
             loss_v.backward()
             Model.optimizer.step()
             print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
@@ -324,8 +337,7 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_s
             *Params["Agents_Index"]]] = [random.uniform(Params["Glucose_Max_C"]*0.5, Params["Glucose_Max_C"]*1.5),
                                        random.uniform(
                                            Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5),
-                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5),
-                                        random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
+                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
 
 
 
@@ -369,5 +381,5 @@ if __name__ == "__main__":
 
     # cProfile.run("","Profile")
     ray.init()
-    main([ToyModel.copy(),ToyModel.copy()])
+    main([ToyModel.copy()])
 
