@@ -17,9 +17,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from collections import namedtuple
+import ray
 
 NUMBER_OF_BATCHES=50
-BATCH_SIZE=50
+BATCH_SIZE=8
 HIDDEN_SIZE=100
 PERCENTILE=70
 CORES = multiprocessing.cpu_count()
@@ -40,7 +41,7 @@ class Net(nn.Module):
         return self.net(x)
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 10, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -107,33 +108,38 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
         m.observation=Params["State_Inds"].copy()
         m.actions=[Params["Model_Amylase_Conc_Index"][ind]]
         m.Policy=Net(len(m.observation), HIDDEN_SIZE, len(m.actions))
+        m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
+        m.Net_Obj=nn.MSELoss(size_average=None, reduce=None, reduction='mean')
+    
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
-
+    
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
 
-    Episode = namedtuple('Episode', field_names=['reward', 'steps'])
-    EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
     Outer_Counter = 0
     # Q initalization ###------------------------------------------------------------
-    for _ in range(NUMBER_OF_BATCHES):
+    for c in range(NUMBER_OF_BATCHES):
         
-        Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
-        
-        for Model in Models:
-            filter_batch(Model, PERCENTILE)
+        Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
+        Batch_Out=list(map(list, zip(*Batch_Out)))
+        for index,Model in enumerate(Models):
+            obs_v, acts_v, reward_b, reward_m=filter_batch(Batch_Out[index], PERCENTILE)
+            Model.optimizer.zero_grad()
+            action_scores_v = Model.Policy(obs_v)
+            loss_v = m.Net_Obj(action_scores_v, acts_v)
+            loss_v.backward()
+            Model.optimizer.step()
+            print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
 
 
 
-        if Outer_Counter % 10 == 0:
-            for i in range(Number_of_Models):
-                with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
-                    pickle.dump(Models[i].W, f)
-       
-        Outer_Counter += 1
 
+
+
+
+@ray.remote
 def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     """
     This function calculates the concentration of each species
@@ -160,7 +166,7 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
 
 
 
-    return sol, t
+    return [m.Episode for m in Models]
 
 
 def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
@@ -184,7 +190,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     dCdt = np.zeros(C.shape)
     Sols = list([0 for i in range(Models.__len__())])
     for i,M in enumerate(Models):
-        M.a=M.Policy(torch.FloatTensor([np.array(C[Params["State_Inds"]])])).item()
+        M.a=M.Policy(torch.FloatTensor([C[Params["State_Inds"]]])).item()
 
         M.reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x)(M.a, 1)
@@ -321,10 +327,18 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_s
                                        random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5),
                                         random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
 
-    C, t = dFBA(
-        Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
 
-    return C, t
+
+
+
+
+    
+    Batch_Episodes=[]
+    for _ in range(Batch_Size):
+        Batch_Episodes.append(dFBA.remote(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
+
+    return(ray.get(Batch_Episodes))
+    
 
 
 
@@ -342,7 +356,7 @@ def filter_batch(batch, percentile):
         train_act.extend(map(lambda step: step.action, example.steps))
 
     train_obs_v = torch.FloatTensor(train_obs)
-    train_act_v = torch.LongTensor(train_act)
+    train_act_v = torch.FloatTensor(train_act)
     return train_obs_v, train_act_v, reward_bound, reward_mean
 
 
@@ -354,5 +368,6 @@ if __name__ == "__main__":
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
     # cProfile.run("","Profile")
+    ray.init()
     main([ToyModel.copy(),ToyModel.copy()])
 
