@@ -16,13 +16,16 @@ from ToyModel import ToyModel
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from collections import namedtuple
+
 NUMBER_OF_BATCHES=50
 BATCH_SIZE=50
 HIDDEN_SIZE=100
-
+PERCENTILE=70
 CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
-
+Episode = namedtuple('Episode', field_names=['reward', 'steps'])
+EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
 
 class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
@@ -100,35 +103,31 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100,
     Ranges.append([0,Params["Glucose_Max_C"]])
     Ranges.append([0,Params["Starch_Max_C"]])
     
-    for m in Models:
+    for ind,m in enumerate(Models):
+        m.observation=Params["State_Inds"].copy()
+        m.actions=[Params["Model_Amylase_Conc_Index"][ind]]
         m.Policy=Net(len(m.observation), HIDDEN_SIZE, len(m.actions))
-
-
-
-    # Init_C[[Params["Glucose_Index"],
-    #         Params["Starch_Index"], Params["Amylase_Ind"]]] = [100, 1, 1]
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
-    F={}
+
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
-        F[Models[i].NAME]=[]
-        F[Models[i].NAME+"_abs_W_max"]=[]
         #Models[i].solver = "cplex"
 
-
+    Episode = namedtuple('Episode', field_names=['reward', 'steps'])
+    EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
     Outer_Counter = 0
     # Q initalization ###------------------------------------------------------------
     for _ in range(NUMBER_OF_BATCHES):
         
+        Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
         
-        
-        for i in range(Models.__len__()):
-            F[Models[i].NAME].append(np.sum(Models[i].f_values))
-            F[Models[i].NAME+"_abs_W_max"].append(np.max(np.abs(Models[i].W)))
+        for Model in Models:
+            filter_batch(Model, PERCENTILE)
 
 
-        if Outer_Counter % 1000 == 0:
+
+        if Outer_Counter % 10 == 0:
             for i in range(Number_of_Models):
                 with open(os.path.join(Main_dir, "Outputs", Models[i].NAME+"_"+str(Outer_Counter)+".pkl"), "wb") as f:
                     pickle.dump(Models[i].W, f)
@@ -141,8 +140,6 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     Models is a list of COBRA Model objects
     Mapping_Dict is a dictionary of dictionaries
     """
-    for i in range(Models.__len__()):
-        Models[i].f_values=[] 
     ##############################################################
     # Initializing the ODE Solver
     ##############################################################
@@ -150,9 +147,19 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     ##############################################################
     # Solving the ODE
     ##############################################################
-
+    for m in Models:
+        m.episode_reward=0
+        m.episode_steps=[]
+    
     sol, t = odeFwdEuler(ODE_System, Init_C, dt,  Params,
                          t_span, Models, Mapping_Dict)
+    
+    for m in Models:
+        m.Episode=Episode(reward=m.episode_reward, steps=m.episode_steps)
+
+
+
+
     return sol, t
 
 
@@ -177,12 +184,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     dCdt = np.zeros(C.shape)
     Sols = list([0 for i in range(Models.__len__())])
     for i,M in enumerate(Models):
-        Temp_O=np.array([np.sum(M.W[M.Features.Get_Feature_Vector((C[Params["State_Inds"]],idx))]) for idx in M.Actions])
-        if np.random.random()<M.epsilon:
-            M.a=np.random.choice(M.Actions)
-        else:
-            M.a=np.argmax(Temp_O)
-        M.q=Temp_O[M.a]
+        M.a=M.Policy(torch.FloatTensor([np.array(C[Params["State_Inds"]])])).item()
 
         M.reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x)(M.a, 1)
@@ -193,12 +195,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         Sols[i] = Models[i].optimize()
 
         if Sols[i].status == 'infeasible':
-            Models[i].f_values.append(-10)
+            Models[i].reward= -10
             dCdt[i] = 0
 
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
-            Models[i].f_values.append(Sols[i].objective_value)
+            Models[i].reward =Sols[i].objective_value
 
 
 
@@ -220,20 +222,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         Starch_Degradation_Kinetics(
             C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/100
 
+    for m in Models:
+        m.episode_reward += m.reward
+        m.episode_steps.append(EpisodeStep(observation=C[Params["State_Inds"]], action=m.a))
+    
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
-    Next_C = C[Params["State_Inds"]]+dCdt[Params["State_Inds"]]*dt
-    Next_C[Next_C < 0] = 0
-
-
-    for z in Models:
-        
-
-        qp=np.array([np.sum(z.W[z.Features.Get_Feature_Vector((Next_C,idx))]) for idx in z.Actions]).max()
-
-        delta=z.f_values[-1]-z.R+qp-z.q
-        z.R+=z.beta*delta
-        z.W[z.Features.Get_Feature_Vector((C[Params["State_Inds"]], z.a))] += Params['alpha']*delta
-
+    
     return dCdt
 
 
@@ -266,20 +260,7 @@ class Policy_Deterministic:
         return self.Policy[state]
 
 
-class Policy_General:
-    """
-    Any policy would be an instance of this class
-    Given a state it will retrun a dictionary including the probability distribution o
-    each action
-    """
 
-    def __init__(self, Porb_Dist_Dict):
-        self.Policy = Porb_Dist_Dict
-
-    def get_action(self, state):
-        Actions = [(action, self.Policy[state][action])
-                   for action in self.Policy[state].keys()]
-        np.random.choice(Actions, p=[action[1] for action in Actions], k=1)
 
 
 def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 1):
@@ -329,7 +310,7 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
     return sol, t
 
 
-def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_span=[0, 100], dt=0.1):
+def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_span=[0, 100], dt=0.1):
 
 
     Init_C[[Params["Glucose_Index"],
@@ -338,30 +319,14 @@ def Generate_Episodes_With_State(dFBA, Params, Init_C, Models, Mapping_Dict, t_s
                                        random.uniform(
                                            Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5),
                                        random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5),
-                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
+                                        random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
 
     C, t = dFBA(
         Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
 
     return C, t
 
-    # Here we can change np.sum(C[*, m]) to C[-1, m] to favor final steady state concentratins
-    # Or even other smart things!
-    # Leg=[]
-    # plt.cla()
-    # for i in range(Models.__len__()):
-    #     plt.plot(t, C[:, i])
-    #     Leg.append(Models[i].name)
-    # plt.plot(t,C[:, Params["Glucose_Index"]])
-    # plt.plot(t,C[:, Params["Starch_Index"]])
-    # plt.plot(t,C[:, Params["Amylase_Ind"]])
-    # Leg.append("Glucose")
-    # Leg.append("Starch")
-    # Leg.append("Amylase")
-    # plt.legend(Leg)
-    # plt.ioff()
 
-    # plt.show()
 
 def filter_batch(batch, percentile):
     rewards = list(map(lambda s: s.reward, batch))
