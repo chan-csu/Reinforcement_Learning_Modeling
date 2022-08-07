@@ -19,13 +19,14 @@ import torch.optim as optim
 from collections import namedtuple
 import ray
 from sklearn.preprocessing import StandardScaler
+from tensorboardX import SummaryWriter
 
 Scaler=StandardScaler()
 
-NUMBER_OF_BATCHES=100
-BATCH_SIZE=8
+NUMBER_OF_BATCHES=200
+BATCH_SIZE=16
 HIDDEN_SIZE=20
-PERCENTILE=95
+PERCENTILE=70
 CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
@@ -46,6 +47,7 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, n_actions),
             
         )
@@ -54,7 +56,7 @@ class Net(nn.Module):
         return self.net(x)
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 50, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -112,10 +114,9 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 50, 
         "beta":alpha
     }
 
-    Params["State_Inds"]=[0,Params["Glucose_Index"],Params["Starch_Index"]]
-    Ranges=[[0,1000] for i in range(Number_of_Models)]
-    Ranges.append([0,Params["Glucose_Max_C"]])
-    Ranges.append([0,Params["Starch_Max_C"]])
+    Params["State_Inds"]=[ind for ind in Params["Agents_Index"]]
+    Params["State_Inds"].append(Params["Glucose_Index"])
+    Params["State_Inds"].append(Params["Starch_Index"])
     
     for ind,m in enumerate(Models):
         m.observation=Params["State_Inds"].copy()
@@ -123,6 +124,7 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 50, 
         m.Policy=Net(len(m.observation), HIDDEN_SIZE, len(m.actions))
         m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
+        m.epsilon=0.01
     
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
@@ -130,9 +132,10 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 50, 
     for i in range(Number_of_Models):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
-
+    writer = SummaryWriter(comment="-DeepRLDFBA")
     Outer_Counter = 0
-    # Q initalization ###------------------------------------------------------------
+
+
     for c in range(NUMBER_OF_BATCHES):
         
         Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
@@ -144,9 +147,10 @@ def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 50, 
             loss_v = Model.Net_Obj(action_scores_v, acts_v)
             loss_v.backward()
             Model.optimizer.step()
+            print(f"{Model.NAME}")
             print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
 
-
+            writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
 
 
 
@@ -203,7 +207,14 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     dCdt = np.zeros(C.shape)
     Sols = list([0 for i in range(Models.__len__())])
     for i,M in enumerate(Models):
-        M.a=M.Policy(torch.FloatTensor([C[Params["State_Inds"]]])).item()
+        
+        if random.random()<M.epsilon:
+
+            M.a=random.random()*30
+        
+        else:
+
+            M.a=M.Policy(torch.FloatTensor([C[Params["State_Inds"]]])).item()
 
         M.reactions[Params["Model_Amylase_Conc_Index"]
                                 [i]].lower_bound = (lambda x, a: a*x)(M.a, 1)
@@ -333,12 +344,12 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_s
 
 
     Init_C[[Params["Glucose_Index"],
-            Params["Starch_Index"],
-            *Params["Agents_Index"]]] = [random.uniform(Params["Glucose_Max_C"]*0.5, Params["Glucose_Max_C"]*1.5),
+            Params["Starch_Index"]]] = [random.uniform(Params["Glucose_Max_C"]*0.5, Params["Glucose_Max_C"]*1.5),
                                        random.uniform(
-                                           Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5),
-                                       random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)]
-
+                                           Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5)]
+    
+    for agent_ind in Params["Agents_Index"]:
+        Init_C[agent_ind]=random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)
 
 
 
