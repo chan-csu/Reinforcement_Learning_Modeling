@@ -230,7 +230,7 @@ Biomass_1.upper_bound = 1000
 Toy_Model_NE_1.add_reaction(Biomass_1)
 
 Toy_Model_NE_1.objective='OBJ_sp1'
-
+Toy_Model_NE_1.Biomass_Ind=9
 
 
 ### ADP Production From Catabolism ###
@@ -318,7 +318,7 @@ Biomass_2.lower_bound = 0
 Biomass_2.upper_bound = 1000
 Toy_Model_NE_2.add_reaction(Biomass_2)
 Toy_Model_NE_2.objective="OBJ_sp2"
-
+Toy_Model_NE_2.Biomass_Ind=9
 
 
 

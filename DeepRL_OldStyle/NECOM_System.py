@@ -270,14 +270,22 @@ def Build_Mapping_Matrix(Models):
     Ex_sp = []
     Temp_Map={}
     for model in Models:
-        for Ex_rxn in model.exchanges:
-            if list(Ex_rxn.metabolites.keys())[0].id not in Ex_sp:
-                Ex_sp.append(list(Ex_rxn.metabolites.keys())[0].id)
+        if not hasattr(model,"Biomass_Ind"):
+            raise Exception("Models must have 'Biomass_Ind' attribute in order for the DFBA to work properly!")
+        for Ex_rxn in model.exchanges :
+            if Ex_rxn!=model.reactions[model.Biomass_Ind]:
+                if list(Ex_rxn.metabolites.keys())[0].id not in Ex_sp:
+                    Ex_sp.append(list(Ex_rxn.metabolites.keys())[0].id)
+                if list(Ex_rxn.metabolites.keys())[0].id in Temp_Map.keys():
+                   Temp_Map[list(Ex_rxn.metabolites.keys())[0].id][model]=Ex_rxn
+                else:
+                     Temp_Map[list(Ex_rxn.metabolites.keys())[0].id]={model:Ex_rxn}
+
     Mapping_Matrix = np.zeros((len(Ex_sp), len(Models)), dtype=int)
     for i, id in enumerate(Ex_sp):
         for j, model in enumerate(Models):
-            if id in model.reactions:
-                Mapping_Matrix[i, j] = model.reactions.index(id)
+            if model in Temp_Map[id].keys():
+                Mapping_Matrix[i, j] = model.reactions.index(Temp_Map[id][model].id)
             else:
                 Mapping_Matrix[i, j] = -1
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
