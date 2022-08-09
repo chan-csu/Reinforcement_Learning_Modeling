@@ -12,7 +12,7 @@ import multiprocessing
 import pickle
 import pandas
 #import cplex
-from ToyModel import ToyModel
+from ToyModel import ToyModel_Starch_Amylase as ToyModel_SA
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -392,5 +392,5 @@ if __name__ == "__main__":
 
     # cProfile.run("","Profile")
     ray.init()
-    main([ToyModel.copy()])
+    main([ToyModel_SA.copy()])
 
