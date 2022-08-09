@@ -73,8 +73,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     # Adding Agents info ###-----------------------------------------------------
 
     # State dimensions in this RLDFBA variant include: [Agent1,...,Agentn, glucose,starch]
-    Number_of_Models = Models.__len__()
-    for i in range(Number_of_Models):
+    for i in range(len(Models)):
         if not hasattr(Models[i], "_name"):
             Models[i].NAME = "Agent_" + str(i)
             print(f"Agent {i} has been given a defult name")
@@ -88,51 +87,33 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     # or the documentation.
 
     Mapping_Dict = Build_Mapping_Matrix(Models)
-    Init_C = np.ones((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))
-    Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))
+    Init_C = np.ones((len(Models)+len(Mapping_Dict["Ex_sp"]),))
+    Inlet_C = np.zeros((len(Models)+len(Mapping_Dict["Ex_sp"]),))
 
-    # The Params are the main part to change from problem to problem
+    #Parameters that are use inside DFBA
 
     Params = {
         "Dilution_Rate": Dil_Rate,
-        "Glucose_Index": Mapping_Dict["Ex_sp"].index("Glc_Ex")+Models.__len__(),
-        "Starch_Index": Mapping_Dict["Ex_sp"].__len__()+Models.__len__(),
-        "Amylase_Ind": Mapping_Dict["Ex_sp"].index("Amylase_Ex")+Models.__len__(),
         "Inlet_C": Inlet_C,
-        "Model_Glc_Conc_Index": [Models[i].reactions.index("Glc_Ex") for i in range(Number_of_Models)],
-        "Model_Amylase_Conc_Index": [Models[i].reactions.index("Amylase_Ex") for i in range(Number_of_Models)],
-        "Agents_Index": [i for i in range(Number_of_Models)],
-        "Num_Glucose_States": 10,
-        "Num_Starch_States": 10,
-        "Num_Amylase_States": 10,
-        "Number_of_Agent_States": 10,
-        "Glucose_Max_C": 200,
-        "Starch_Max_C": 10,
-        "Amylase_Max_C": 1,
-        "Agent_Max_C": 1,
-        "alpha": alpha,
-        "beta":alpha
+        "Agents_Index": [i for i in range(len(Models))],
     }
 
-    Params["State_Inds"]=[ind for ind in Params["Agents_Index"]]
-    Params["State_Inds"].append(Params["Glucose_Index"])
-    Params["State_Inds"].append(Params["Starch_Index"])
-    
+    #Define Agent attributes
+    Obs=[i for i in range(len(Models))]
+    Obs.extend([Mapping_Dict["Ex_sp"].index(sp)+len(Models) for sp in Mapping_Dict["Ex_sp"] if sp!='P' ])
     for ind,m in enumerate(Models):
-        m.observation=Params["State_Inds"].copy()
-        m.actions=[Params["Model_Amylase_Conc_Index"][ind]]
-        m.Policy=Net(len(m.observation), HIDDEN_SIZE, len(m.actions))
+        m.observables=tuple(Obs)
+        m.actions=(m.Biomass_Ind,Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
+        m.Policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
         m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.01
     
-    Inlet_C[Params["Starch_Index"]] = 10
-    Params["Inlet_C"] = Inlet_C
     
-    for i in range(Number_of_Models):
+    for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
-    writer = SummaryWriter(comment="-DeepRLDFBA")
+    writer = SummaryWriter(comment="-DeepRLDFBA_NECOM")
     Outer_Counter = 0
 
 
