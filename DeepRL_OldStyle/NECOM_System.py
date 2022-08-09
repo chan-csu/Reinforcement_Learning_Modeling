@@ -102,14 +102,15 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     Obs=[i for i in range(len(Models))]
     Obs.extend([Mapping_Dict["Ex_sp"].index(sp)+len(Models) for sp in Mapping_Dict["Ex_sp"] if sp!='P' ])
     for ind,m in enumerate(Models):
-        m.observables=tuple(Obs)
+        m.observables=Obs
         m.actions=(m.Biomass_Ind,Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
         m.Policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
         m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.01
-    
-    
+    ### I Assume that the environment states are all observable. Env states will be stochastic
+    Params["Env_States"]=Models[0].observables
+    Params["Env_States_Initial_Ranges"]=[[0,10],[0,10],[90,100],[10,100],[10,100]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -191,17 +192,21 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
         if random.random()<M.epsilon:
 
-            M.a=random.random()*30
+            M.a=np.random.random(len(M.actions))*30
         
         else:
 
-            M.a=M.Policy(torch.FloatTensor([C[Params["State_Inds"]]])).item()
-
-        M.reactions[Params["Model_Amylase_Conc_Index"]
-                                [i]].lower_bound = (lambda x, a: a*x)(M.a, 1)
+            M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
-        M.reactions[Params["Model_Glc_Conc_Index"][i]
-                                    ].lower_bound = - Glucose_Uptake_Kinetics(C[Params["Glucose_Index"]])
+        for index,item in enumerate(Mapping_Dict["Ex_sp"]):
+            if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=20
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].lower_bound=-General_Uptake_Kinetics(C[index+len(Models)])
+                
+            
+        for index,flux in enumerate(M.actions):
+            if M.a[index]>M.reactions[flux].lower_bound and M.a[index]<M.reactions[flux].upper_bound:
+                M.reactions[flux].lower_bound=M.a[index] 
         
         Sols[i] = Models[i].optimize()
 
@@ -226,16 +231,10 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                     dCdt[i+Models.__len__()] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                     [i, j]]*C[j]
 
-    dCdt[Params["Glucose_Index"]] += Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
-
-    dCdt[Params["Starch_Index"]] = - \
-        Starch_Degradation_Kinetics(
-            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/100
 
     for m in Models:
         m.episode_reward += m.reward
-        m.episode_steps.append(EpisodeStep(observation=C[Params["State_Inds"]], action=m.a))
+        m.episode_steps.append(EpisodeStep(observation=C[m.observables], action=m.a))
     
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     
@@ -251,8 +250,12 @@ def Build_Mapping_Matrix(Models):
     Ex_sp = []
     Temp_Map={}
     for model in Models:
+        
+        
         if not hasattr(model,"Biomass_Ind"):
             raise Exception("Models must have 'Biomass_Ind' attribute in order for the DFBA to work properly!")
+        
+        
         for Ex_rxn in model.exchanges :
             if Ex_rxn!=model.reactions[model.Biomass_Ind]:
                 if list(Ex_rxn.metabolites.keys())[0].id not in Ex_sp:
@@ -333,13 +336,9 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
 def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_span=[0, 100], dt=0.1):
 
 
-    Init_C[[Params["Glucose_Index"],
-            Params["Starch_Index"]]] = [random.uniform(Params["Glucose_Max_C"]*0.5, Params["Glucose_Max_C"]*1.5),
-                                       random.uniform(
-                                           Params["Starch_Max_C"]*0.5, Params["Starch_Max_C"]*1.5)]
+    Init_C[list(Params["Env_States"])] = [random.uniform(Range[0], Range[1]) for Range in Params["Env_States_Initial_Ranges"]]
     
-    for agent_ind in Params["Agents_Index"]:
-        Init_C[agent_ind]=random.uniform(Params["Agent_Max_C"]*0.5, Params["Agent_Max_C"]*1.5)
+
 
 
 
@@ -350,8 +349,7 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_s
     for _ in range(Batch_Size):
         Batch_Episodes.append(dFBA.remote(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
 
-    return(ray.get(Batch_Episodes))
-    
+    return(ray.get(Batch_Episodes))    
 
 
 
