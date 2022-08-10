@@ -218,7 +218,7 @@ Toy_Model_NE_1.add_reaction(R_4_sp1)
 
 OBJ_sp1 = Reaction("OBJ_sp1")
 biomass_sp1 = Metabolite('biomass_sp1', compartment='c')
-OBJ_sp1.add_metabolites({ADP:5 ,ATP: -5,biomass_sp1:1,A:-3,B:-3})
+OBJ_sp1.add_metabolites({ADP:5 ,ATP: -5,biomass_sp1:0.01,A:-3,B:-3})
 OBJ_sp1.lower_bound = 0
 OBJ_sp1.upper_bound = 1000
 Toy_Model_NE_1.add_reaction(OBJ_sp1)
@@ -229,7 +229,7 @@ Biomass_1.lower_bound = 0
 Biomass_1.upper_bound = 1000
 Toy_Model_NE_1.add_reaction(Biomass_1)
 
-Toy_Model_NE_1.objective='OBJ_sp1'
+Toy_Model_NE_1.objective='Biomass_1'
 Toy_Model_NE_1.Biomass_Ind=9
 
 
@@ -307,7 +307,7 @@ Toy_Model_NE_2.add_reaction(R_4_sp2)
 
 OBJ_sp2 = Reaction("OBJ_sp2")
 biomass_sp2 = Metabolite('biomass_sp2', compartment='c')
-OBJ_sp2.add_metabolites({ADP:5 ,ATP: -5,biomass_sp2:1,A:-6,B:-6})
+OBJ_sp2.add_metabolites({ADP:5 ,ATP: -5,biomass_sp2:0.01,A:-6,B:-6})
 OBJ_sp2.lower_bound = 0
 OBJ_sp2.upper_bound = 1000
 Toy_Model_NE_2.add_reaction(OBJ_sp2)
@@ -317,7 +317,7 @@ Biomass_2.add_metabolites({biomass_sp2:-1})
 Biomass_2.lower_bound = 0
 Biomass_2.upper_bound = 1000
 Toy_Model_NE_2.add_reaction(Biomass_2)
-Toy_Model_NE_2.objective="OBJ_sp2"
+Toy_Model_NE_2.objective="Biomass_2"
 Toy_Model_NE_2.Biomass_Ind=9
 
 
