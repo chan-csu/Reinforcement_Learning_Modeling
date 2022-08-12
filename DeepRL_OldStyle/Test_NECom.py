@@ -146,7 +146,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
         if random.random()<M.epsilon:
 
-            M.a=np.random.random(len(M.actions))*30
+            M.a=np.random.random(len(M.actions))*10
         
         else:
 
@@ -159,9 +159,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                 
             
         for index,flux in enumerate(M.actions):
-            M.a[index]=Flux_Clipper(M.reactions[M.actions[index]].lower_bound,M.a[index],M.reactions[M.actions[index]].upper_bound)
-            M.reactions[M.actions[index]].lower_bound=M.a[index]
-            M.reactions[M.actions[index]].upper_bound=M.a[index]
+            M.a[index]=Flux_Clipper(M.reactions[flux].lower_bound,M.a[index],M.reactions[flux].upper_bound)
+            M.reactions[flux].lower_bound=M.a[index]
+            M.reactions[flux].upper_bound=M.a[index]
 
         Sols[i] = Models[i].optimize()
 
@@ -315,7 +315,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","11_08_2022.18_42_10","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","11_08_2022.21_50_12","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 

@@ -21,17 +21,37 @@ from collections import namedtuple
 import ray
 from sklearn.preprocessing import StandardScaler
 from tensorboardX import SummaryWriter
+from heapq import heappop, heappush
 
 Scaler=StandardScaler()
 
 NUMBER_OF_BATCHES=200
-BATCH_SIZE=32
+BATCH_SIZE=8
 HIDDEN_SIZE=20
 PERCENTILE=70
 CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
 EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
+
+class ProrityQueue:
+    
+    def __init__(self,N):
+        self.N=N
+        self.Elements=[]
+    
+    def enqueue_with_priority(self,Step):
+        Element = (-Step[0], random.random(),Step[1],Step[2])
+        heappush(self.Elements, Element)
+
+    def dequeue(self):
+        heappop(self.Elements)
+    
+    def balance(self):
+        while len(self.Elements)>=self.N:
+            self.dequeue()
+    
+    
 
 class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
@@ -115,6 +135,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.01
+        m.Queue=ProrityQueue(100000)
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
     Params["Env_States_Initial_Ranges"]=[[0,1],[0,1],[90,100],[0,0.001],[0,0.001]]
@@ -130,14 +151,20 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
         Batch_Out=list(map(list, zip(*Batch_Out)))
         for index,Model in enumerate(Models):
-            obs_v, acts_v, reward_b, reward_m=filter_batch(Batch_Out[index], PERCENTILE)
+            
+            for i in [(Ep.reward,Step.observation,Step.action) for Ep in Batch_Out[index] for Step in Ep.steps]:
+                Model.Queue.enqueue_with_priority(i)
+            Model.Queue.balance()
+            _,_,obs_v, acts_v=list(map(list, zip(*Model.Queue.Elements)))
+    
+            reward_m=np.average([Ep.reward for Ep in Batch_Out[index]])
             Model.optimizer.zero_grad()
-            action_scores_v = Model.Policy(obs_v)
-            loss_v = Model.Net_Obj(action_scores_v, acts_v)
+            action_scores_v = Model.Policy(torch.FloatTensor(obs_v))
+            loss_v = Model.Net_Obj(action_scores_v, torch.FloatTensor(acts_v))
             loss_v.backward()
             Model.optimizer.step()
             print(f"{Model.NAME}")
-            print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
+            print("%d: loss=%.3f, reward_mean=%.1f" % (c, loss_v.item(), reward_m))
 
             writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
     
