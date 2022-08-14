@@ -22,35 +22,71 @@ from collections import namedtuple
 import ray
 from sklearn.preprocessing import StandardScaler
 from tensorboardX import SummaryWriter
+from heapq import heappop, heappush
 
 Scaler=StandardScaler()
-
-
 CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
+
+class ProrityQueue:
+    
+    def __init__(self,N):
+        self.N=N
+        self.Elements=[]
+    
+    def enqueue_with_priority(self,Step):
+        Element = (-Step[0], random.random(),Step[1],Step[2])
+        heappush(self.Elements, Element)
+
+    def dequeue(self):
+        heappop(self.Elements)
+    
+    def balance(self):
+        while len(self.Elements)>=self.N:
+            self.dequeue()
+    
+    
 
 class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
         super(Net, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, hidden_size),   
+            nn.Linear(obs_size, hidden_size),
+            nn.ReLU(),   
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
             nn.Linear(hidden_size, n_actions),
             
         )
@@ -315,7 +351,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","11_08_2022.21_50_12","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","12_08_2022.10_36_55","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 

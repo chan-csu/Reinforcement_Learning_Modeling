@@ -1,6 +1,7 @@
 
 # Script for running Community Dynamic Flux Balance Analysis (CDFBA)
 # Written by: Parsa Ghadermazi
+from cmath import inf
 import datetime
 from xmlrpc.client import DateTime
 import numpy as np
@@ -41,11 +42,11 @@ class ProrityQueue:
         self.Elements=[]
     
     def enqueue_with_priority(self,Step):
-        Element = (-Step[0], random.random(),Step[1],Step[2])
+        Element = (Step[0], random.random(),Step[1],Step[2])
         heappush(self.Elements, Element)
 
     def dequeue(self):
-        heappop(self.Elements)
+        return heappop(self.Elements)[0]
     
     def balance(self):
         while len(self.Elements)>=self.N:
@@ -57,14 +58,7 @@ class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
         super(Net, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, hidden_size),   
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(obs_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
@@ -138,7 +132,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.Queue=ProrityQueue(100000)
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0,1],[0,1],[90,100],[0,0.001],[0,0.001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0,0.001],[0,0.001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
