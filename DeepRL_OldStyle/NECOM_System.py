@@ -26,9 +26,9 @@ from heapq import heappop, heappush
 
 Scaler=StandardScaler()
 
-NUMBER_OF_BATCHES=200
-BATCH_SIZE=8
-HIDDEN_SIZE=20
+NUMBER_OF_BATCHES=1000
+BATCH_SIZE=16
+HIDDEN_SIZE=30
 PERCENTILE=70
 CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
@@ -69,6 +69,21 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
             nn.Linear(hidden_size, n_actions),
             
         )
@@ -128,11 +143,11 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.Policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
         m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
-        m.epsilon=0.01
-        m.Queue=ProrityQueue(100000)
+        m.epsilon=0.05
+        
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0,0.001],[0,0.001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.001,0.001+0.00000000001],[0.001,0.001+0.00000000001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -141,24 +156,19 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
 
     for c in range(NUMBER_OF_BATCHES):
-        
+        # for m in Models:
+        #     m.epsilon=1/(1+np.exp(c/20))
         Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
         Batch_Out=list(map(list, zip(*Batch_Out)))
         for index,Model in enumerate(Models):
-            
-            for i in [(Ep.reward,Step.observation,Step.action) for Ep in Batch_Out[index] for Step in Ep.steps]:
-                Model.Queue.enqueue_with_priority(i)
-            Model.Queue.balance()
-            _,_,obs_v, acts_v=list(map(list, zip(*Model.Queue.Elements)))
-    
-            reward_m=np.average([Ep.reward for Ep in Batch_Out[index]])
+            obs_v, acts_v, reward_b, reward_m=filter_batch(Batch_Out[index], PERCENTILE)
             Model.optimizer.zero_grad()
-            action_scores_v = Model.Policy(torch.FloatTensor(obs_v))
-            loss_v = Model.Net_Obj(action_scores_v, torch.FloatTensor(acts_v))
+            action_scores_v = Model.Policy(obs_v)
+            loss_v = Model.Net_Obj(action_scores_v, acts_v)
             loss_v.backward()
             Model.optimizer.step()
             print(f"{Model.NAME}")
-            print("%d: loss=%.3f, reward_mean=%.1f" % (c, loss_v.item(), reward_m))
+            print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
 
             writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
     
@@ -167,6 +177,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     os.mkdir(Results_Dir)
     with open(os.path.join(Results_Dir,"Models.pkl"),'wb') as f:
         pickle.dump(Models,f)
+
 
 @ray.remote
 def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
@@ -222,7 +233,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
         if random.random()<M.epsilon:
 
-            M.a=np.random.random(len(M.actions))*30
+            M.a=np.random.random(len(M.actions))*10-5
         
         else:
 
@@ -338,7 +349,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 5*(Compound/(Compound+20))
+    return 10*(Compound/(Compound+20))
 
 
 
@@ -363,19 +374,15 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_s
     Init_C[list(Params["Env_States"])] = [random.uniform(Range[0], Range[1]) for Range in Params["Env_States_Initial_Ranges"]]
     
 
-
-
-
-
-
     
     Batch_Episodes=[]
-    for _ in range(Batch_Size):
+    for BATCH in range(Batch_Size):
         Batch_Episodes.append(dFBA.remote(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
         # Batch_Episodes.append(dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
 
     return(ray.get(Batch_Episodes))    
 
+    # return(Batch_Episodes)    
 
 
 def filter_batch(batch, percentile):

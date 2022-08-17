@@ -46,47 +46,34 @@ class ProrityQueue:
             self.dequeue()
     
     
-
 class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
         super(Net, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, hidden_size),
-            nn.ReLU(),   
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),           
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),            
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, n_actions),
             
         )
@@ -127,7 +114,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.01,0.0100001],[0.01,0.0100001],[99.99999,100],[0,0.001],[0,0.001]]
+    Params["Env_States_Initial_Ranges"]=[[0.01,0.0100001],[0.01,0.0100001],[50,50.001],[0,0.001],[0,0.001]]
 
     Sol,t=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
     Sol
@@ -295,7 +282,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 5*(Compound/(Compound+20))
+    return 30*(Compound/(Compound+20))
 
 
 
@@ -351,7 +338,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","12_08_2022.10_36_55","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","14_08_2022.16_00_08","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 
