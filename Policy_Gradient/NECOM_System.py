@@ -27,7 +27,7 @@ from heapq import heappop, heappush
 Scaler=StandardScaler()
 
 NUMBER_OF_BATCHES=1000
-BATCH_SIZE=8
+BATCH_SIZE=16
 HIDDEN_SIZE=30
 PERCENTILE=70
 CORES = multiprocessing.cpu_count()
@@ -59,12 +59,30 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
             nn.Tanh(),
             nn.Linear(hidden_size, n_actions),
             
@@ -123,13 +141,13 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.observables=Obs
         m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
         m.Policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
-        m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
+        m.optimizer=optim.Adagrad(params=m.Policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.05
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[1,0.001+0.00000000001],[1,0.001+0.00000000001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[100,100+0.00001],[0.001,0.001+0.00000000001],[0.001,0.001+0.00000000001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -138,8 +156,8 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
 
     for c in range(NUMBER_OF_BATCHES):
-        for m in Models:
-            m.epsilon=1/(1+np.exp(c/20))
+        # for m in Models:
+        #     m.epsilon=1/(1+np.exp(c/20))
         Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
         Batch_Out=list(map(list, zip(*Batch_Out)))
         for index,Model in enumerate(Models):
@@ -396,5 +414,5 @@ if __name__ == "__main__":
 
     # cProfile.run("","Profile")
     ray.init()
-    main([Toy_Model_NE_1.copy(),Toy_Model_NE_2.copy()])
+    main([Toy_Model_NE_1.copy()])
 
