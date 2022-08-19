@@ -65,6 +65,20 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Tanh(),
             nn.Linear(hidden_size, n_actions),
             
@@ -123,7 +137,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.observables=Obs
         m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
         m.Policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
-        m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
+        m.optimizer=optim.SGD(params=m.Policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.05
         
@@ -139,7 +153,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
     for c in range(NUMBER_OF_BATCHES):
         for m in Models:
-            m.epsilon=1/(1+np.exp(c/20))
+            m.epsilon=0.01+0.99/(np.exp(c/20))
         Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
         Batch_Out=list(map(list, zip(*Batch_Out)))
         for index,Model in enumerate(Models):
@@ -215,7 +229,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
         if random.random()<M.epsilon:
 
-            M.a=np.random.random(len(M.actions))*10-5
+            M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]*(1-M.epsilon)+np.random.uniform(low=-0.2, high=0.2,size=len(M.actions))*M.epsilon
         
         else:
 
@@ -230,7 +244,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         for index,flux in enumerate(M.actions):
             M.a[index]=Flux_Clipper(M.reactions[M.actions[index]].lower_bound,M.a[index],M.reactions[M.actions[index]].upper_bound)
             M.reactions[M.actions[index]].lower_bound=M.a[index]
-            M.reactions[M.actions[index]].upper_bound=M.a[index]
+            # M.reactions[M.actions[index]].upper_bound=M.a[index]
 
         Sols[i] = Models[i].optimize()
 

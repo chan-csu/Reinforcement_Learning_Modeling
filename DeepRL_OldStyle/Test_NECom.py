@@ -65,21 +65,20 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),           
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),            
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
             nn.Linear(hidden_size, n_actions),
             
         )
 
     def forward(self, x):
         return self.net(x)
+
 
 
 def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA"):
@@ -114,7 +113,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.01,0.0100001],[0.01,0.0100001],[50,50.001],[0,0.001],[0,0.001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.100001],[0.1,0.100001],[50,50.001],[0,0.001],[0,0.001]]
 
     Sol,t=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
     Sol
@@ -338,7 +337,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","14_08_2022.16_00_08","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","19_08_2022.12_50_59","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 
