@@ -26,7 +26,7 @@ from heapq import heappop, heappush
 
 Scaler=StandardScaler()
 
-NUMBER_OF_BATCHES=1000
+NUMBER_OF_BATCHES=100
 BATCH_SIZE=8
 HIDDEN_SIZE=30
 PERCENTILE=70
@@ -59,13 +59,6 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),

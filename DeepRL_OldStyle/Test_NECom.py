@@ -64,13 +64,6 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
             nn.Tanh(),
             nn.Linear(hidden_size, n_actions),
             
@@ -78,6 +71,7 @@ class Net(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
 
 
 
@@ -166,13 +160,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     Sols = list([0 for i in range(Models.__len__())])
     for i,M in enumerate(Models):
         
-        if random.random()<M.epsilon:
 
-            M.a=np.random.random(len(M.actions))*10
-        
-        else:
 
-            M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+        M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
@@ -337,7 +327,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","19_08_2022.12_50_59","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","19_08_2022.17_09_00","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 
