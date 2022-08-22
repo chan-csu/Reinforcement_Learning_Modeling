@@ -2,6 +2,7 @@
 # Script for running Community Dynamic Flux Balance Analysis (CDFBA)
 # Written by: Parsa Ghadermazi
 from cmath import inf
+from dataclasses import dataclass,field
 import datetime
 from xmlrpc.client import DateTime
 import numpy as np
@@ -18,71 +19,48 @@ from ToyModel import  Toy_Model_NE_1,Toy_Model_NE_2
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from collections import namedtuple
-import ray
+from collections import namedtuple,deque
 from sklearn.preprocessing import StandardScaler
-from tensorboardX import SummaryWriter
-from heapq import heappop, heappush
 
 Scaler=StandardScaler()
 
-NUMBER_OF_BATCHES=1000
-BATCH_SIZE=16
-HIDDEN_SIZE=30
-PERCENTILE=70
-CORES = multiprocessing.cpu_count()
+
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
 EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
 
-class ProrityQueue:
-    
-    def __init__(self,N):
-        self.N=N
-        self.Elements=[]
-    
-    def enqueue_with_priority(self,Step):
-        Element = (Step[0], random.random(),Step[1],Step[2])
-        heappush(self.Elements, Element)
+@dataclass
+class Buffer:
+    """
+    A dataclass for feeding raw observations efficiently to pytorch.
 
-    def dequeue(self):
-        return heappop(self.Elements)[0]
+    Observations should be given in the form of (State,Actions,Reward)
+    """
+    window:int=10
+    batch:list[tuple]=field(default_factory=lambda:[(i,i,i) for i in range(10)])
+
+    def __post_init__(self):
+        self.queue=deque(self.batch,self.Window)
     
-    def balance(self):
-        while len(self.Elements)>=self.N:
-            self.dequeue()
+    def update_queue(self,interaction:tuple):
+        self.queue.appendleft(interaction)
     
-    
+
 
 class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
         super(Net, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Tanh(),
             nn.Linear(hidden_size, n_actions),
             
@@ -92,7 +70,7 @@ class Net(nn.Module):
         return self.net(x)
 
 
-def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA",Value_Update_Window=10):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
