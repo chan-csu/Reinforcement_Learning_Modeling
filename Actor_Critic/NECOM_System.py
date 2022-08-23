@@ -4,6 +4,7 @@
 from cmath import inf
 from dataclasses import dataclass,field
 import datetime
+from tkinter import HIDDEN
 from xmlrpc.client import DateTime
 import numpy as np
 import cobra
@@ -23,11 +24,12 @@ from collections import namedtuple,deque
 from sklearn.preprocessing import StandardScaler
 
 Scaler=StandardScaler()
-
-
+HIDDEN_SIZE=20
+NUMBER_OF_BATCHES=100
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
 EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
+
 
 @dataclass
 class Buffer:
@@ -40,7 +42,7 @@ class Buffer:
     batch:list[tuple]=field(default_factory=lambda:[(i,i,i) for i in range(10)])
 
     def __post_init__(self):
-        self.queue=deque(self.batch,self.Window)
+        self.queue=deque(self.batch,self.window)
     
     def update_queue(self,interaction:tuple):
         self.queue.appendleft(interaction)
@@ -118,10 +120,15 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     for ind,m in enumerate(Models):
         m.observables=Obs
         m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
-        m.Policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
-        m.optimizer=optim.Adagrad(params=m.Policy.parameters(), lr=0.01)
+        m.policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
+        m.value=Net(len(m.observables), HIDDEN_SIZE, 1)
+        m.R=0
+        m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.01)
+        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.05
+        m.buffer=Buffer(Value_Update_Window)
+        m.alpha=0.01
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
@@ -129,35 +136,33 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
-    writer = SummaryWriter(comment="-DeepRLDFBA_NECOM")
+    # writer = SummaryWriter(comment="-DeepRLDFBA_NECOM")
     Outer_Counter = 0
 
 
     for c in range(NUMBER_OF_BATCHES):
         # for m in Models:
         #     m.epsilon=1/(1+np.exp(c/20))
-        Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
-        Batch_Out=list(map(list, zip(*Batch_Out)))
-        for index,Model in enumerate(Models):
-            obs_v, acts_v, reward_b, reward_m=filter_batch(Batch_Out[index], PERCENTILE)
-            Model.optimizer.zero_grad()
-            action_scores_v = Model.Policy(obs_v)
-            loss_v = Model.Net_Obj(action_scores_v, acts_v)
-            loss_v.backward()
-            Model.optimizer.step()
-            print(f"{Model.NAME}")
-            print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
+        Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
+        # Batch_Out=list(map(list, zip(*Batch_Out)))
+    #     for index,Model in enumerate(Models):
+    #         Model.optimizer.zero_grad()
+    #         action_scores_v = Model.Policy(obs_v)
+    #         loss_v = Model.Net_Obj(action_scores_v, acts_v)
+    #         loss_v.backward()
+    #         Model.optimizer.step()
+    #         print(f"{Model.NAME}")
+    #         print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
 
-            writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
+    #         writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
     
-    Time=datetime.datetime.now().strftime("%d_%m_%Y.%H_%M_%S")
-    Results_Dir=os.path.join(Main_dir,"Outputs",str(Time))
-    os.mkdir(Results_Dir)
-    with open(os.path.join(Results_Dir,"Models.pkl"),'wb') as f:
-        pickle.dump(Models,f)
+    # Time=datetime.datetime.now().strftime("%d_%m_%Y.%H_%M_%S")
+    # Results_Dir=os.path.join(Main_dir,"Outputs",str(Time))
+    # os.mkdir(Results_Dir)
+    # with open(os.path.join(Results_Dir,"Models.pkl"),'wb') as f:
+    #     pickle.dump(Models,f)
 
 
-@ray.remote
 def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     """
     This function calculates the concentration of each species
@@ -174,6 +179,7 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     for m in Models:
         m.episode_reward=0
         m.episode_steps=[]
+
     
     sol, t = odeFwdEuler(ODE_System, Init_C, dt,  Params,
                          t_span, Models, Mapping_Dict)
@@ -187,7 +193,7 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     return [m.Episode for m in Models]
 
 
-def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
+def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     """
     This function calculates the differential equations for the system
     Models is a list of COBRA Model objects
@@ -208,14 +214,14 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     dCdt = np.zeros(C.shape)
     Sols = list([0 for i in range(Models.__len__())])
     for i,M in enumerate(Models):
-        
+
         if random.random()<M.epsilon:
 
-            M.a=np.random.random(len(M.actions))*10-5
+            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]*(1-M.epsilon)+np.random.uniform(low=-5, high=5,size=len(M.actions))*M.epsilon
         
         else:
 
-            M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
@@ -253,9 +259,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
 
 
     for m in Models:
-        m.episode_reward += m.reward
-        m.episode_steps.append(EpisodeStep(observation=C[m.observables], action=m.a))
-    
+        m.buffer.update_queue((C[m.observables],m.a,m.reward))
+        if Counter>0 and Counter%len(m.buffer.queue)==0:
+            for obs in range(len(m.buffer.queue)-1,0,-1):
+                TD_Error=m.buffer.queue[obs][2]-m.R+m.value(torch.FloatTensor(m.buffer.queue[obs-1][0])).item()-m.value(torch.FloatTensor(m.buffer.queue[obs][0])).item()
+                m.R+=m.alpha*TD_Error
+
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     
     return dCdt
@@ -341,44 +350,24 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
     for i in range(1, len(t)):
         sol[i] = sol[i-1] + \
             ODE_Function(sol[i-1], t[i-1], Models, Mapping_Dict,
-                         Params, dt)*dt
+                         Params, dt,Integrator_Counter)*dt
         Integrator_Counter += 1
     return sol, t
 
 
-def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_span=[0, 100], dt=0.1):
+def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], dt=0.1):
 
 
     Init_C[list(Params["Env_States"])] = [random.uniform(Range[0], Range[1]) for Range in Params["Env_States_Initial_Ranges"]]
-    
 
     
-    Batch_Episodes=[]
-    for BATCH in range(Batch_Size):
-        Batch_Episodes.append(dFBA.remote(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
-        # Batch_Episodes.append(dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
-
-    return(ray.get(Batch_Episodes))    
-
-    # return(Batch_Episodes)    
+    for BATCH in range(NUMBER_OF_BATCHES):
+        dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
+    
+       
 
 
-def filter_batch(batch, percentile):
-    rewards = list(map(lambda s: s.reward, batch))
-    reward_bound = np.percentile(rewards, percentile)
-    reward_mean = float(np.mean(rewards))
 
-    train_obs = []
-    train_act = []
-    for example in batch:
-        if example.reward < reward_bound:
-            continue
-        train_obs.extend(map(lambda step: step.observation, example.steps))
-        train_act.extend(map(lambda step: step.action, example.steps))
-
-    train_obs_v = torch.FloatTensor(train_obs)
-    train_act_v = torch.FloatTensor(train_act)
-    return train_obs_v, train_act_v, reward_bound, reward_mean
 
 
 def Flux_Clipper(Min,Number,Max):
@@ -391,6 +380,5 @@ if __name__ == "__main__":
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
     # cProfile.run("","Profile")
-    ray.init()
     main([Toy_Model_NE_1.copy()])
 
