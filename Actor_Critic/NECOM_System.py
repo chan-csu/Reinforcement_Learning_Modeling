@@ -61,7 +61,8 @@ class DDPGActor(nn.Module):
             nn.Linear(400, 300),
             nn.ReLU(),
             nn.Linear(300, act_size),
-            nn.Tanh() )
+            nn.Tanh(),
+            nn.Linear(act_size, act_size) )
 
     def forward(self, x):
        return self.net(x)
@@ -283,13 +284,15 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             for obs in range(len(m.buffer.queue)-1,0,-1):
                 States.append(m.buffer.queue[obs][0])
                 Actions.append(m.buffer.queue[obs][1])
-                TD_q.append(m.buffer.queue[obs][2]+m.value(torch.FloatTensor([m.buffer.queue[obs-1][0]]),torch.FloatTensor([m.buffer.queue[obs-1][1]])))
+                TD_q.append(-m.R+m.buffer.queue[obs][2]+m.value(torch.FloatTensor([m.buffer.queue[obs-1][0]]),torch.FloatTensor([m.buffer.queue[obs-1][1]])))
                 # TD_Error.append(m.buffer.queue[obs][2]-m.R+m.value(torch.FloatTensor(m.buffer.queue[obs-1][0]),torch.FloatTensor(m.buffer.queue[obs-1][1]))-m.value(torch.FloatTensor(States[-1]),torch.FloatTensor((Actions[-1]))))
-                # m.R+=m.alpha*TD_Error[-1]
+                m.R+=m.alpha*TD_q[-1]
             m.value.zero_grad()
             q_v = m.value(torch.FloatTensor(States), torch.FloatTensor(Actions))
             TD_q_v=torch.FloatTensor(TD_q)
             m.optimizer_value.zero_grad()
+            print(F.mse_loss(q_v,TD_q_v))
+            print(m.R)
             loss_c=F.mse_loss(q_v,TD_q_v.detach())
             loss_c.backward()
             m.optimizer_value.step()
@@ -299,7 +302,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             actor_loss_v = actor_loss_v.mean()
             actor_loss_v.backward()
             m.optimizer_policy.step()
-
+        m.episode_reward+=m.reward
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     
@@ -400,8 +403,8 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], d
     for BATCH in range(NUMBER_OF_BATCHES):
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
-        for mod in Models:
-            print(f"{BATCH} - {mod.NAME} earned {mod.reward} during this episode!")
+        # for mod in Models:
+        #     print(f"{BATCH} - {mod.NAME} earned {mod.episode_reward} during this episode!")
     
 
 
