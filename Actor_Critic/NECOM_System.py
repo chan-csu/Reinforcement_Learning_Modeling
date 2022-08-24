@@ -22,7 +22,9 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import namedtuple,deque
 from sklearn.preprocessing import StandardScaler
-
+import torch.nn.functional as F
+import warnings
+warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
 NUMBER_OF_BATCHES=100
@@ -49,28 +51,41 @@ class Buffer:
     
 
 
-class Net(nn.Module):
-    def __init__(self, obs_size, hidden_size, n_actions):
-        super(Net, self).__init__()
+class DDPGActor(nn.Module):
+
+    def __init__(self, obs_size, act_size):
+        super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, n_actions),
-            
-        )
+            nn.Linear(obs_size, 400),
+            nn.ReLU(),
+            nn.Linear(400, 300),
+            nn.ReLU(),
+            nn.Linear(300, act_size),
+            nn.Tanh() )
 
     def forward(self, x):
-        return self.net(x)
+       return self.net(x)
 
+class DDPGCritic(nn.Module):       
+    
+    def __init__(self, obs_size, act_size):
+
+        super(DDPGCritic, self).__init__()
+        self.obs_net = nn.Sequential(
+            nn.Linear(obs_size, 400),
+            nn.ReLU(),
+            )
+
+
+        self.out_net = nn.Sequential(
+                       nn.Linear(400 + act_size, 300),
+                       nn.ReLU(),
+                       nn.Linear(300, 1)
+                       )
+    
+    def forward(self, x, a):
+        obs = self.obs_net(x)           
+        return self.out_net(torch.cat([obs, a],dim=1))
 
 def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA",Value_Update_Window=10):
     """
@@ -120,8 +135,8 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     for ind,m in enumerate(Models):
         m.observables=Obs
         m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
-        m.policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
-        m.value=Net(len(m.observables), HIDDEN_SIZE, 1)
+        m.policy=DDPGActor(len(m.observables),len(m.actions))
+        m.value=DDPGCritic(len(m.observables),len(m.actions))
         m.R=0
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.01)
         m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
@@ -132,7 +147,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[100,100+0.00001],[0.001,0.001+0.00000000001],[0.001,0.001+0.00000000001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.001,0.001+0.00000000001],[0.001,0.001+0.00000000001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -141,8 +156,8 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
 
     for c in range(NUMBER_OF_BATCHES):
-        # for m in Models:
-        #     m.epsilon=1/(1+np.exp(c/20))
+        for m in Models:
+            m.epsilon=1/(1+np.exp(c/20))
         Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
         # Batch_Out=list(map(list, zip(*Batch_Out)))
     #     for index,Model in enumerate(Models):
@@ -261,9 +276,30 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     for m in Models:
         m.buffer.update_queue((C[m.observables],m.a,m.reward))
         if Counter>0 and Counter%len(m.buffer.queue)==0:
+            # TD_Error=[]
+            States=[]
+            Actions=[]
+            TD_q=[]
             for obs in range(len(m.buffer.queue)-1,0,-1):
-                TD_Error=m.buffer.queue[obs][2]-m.R+m.value(torch.FloatTensor(m.buffer.queue[obs-1][0])).item()-m.value(torch.FloatTensor(m.buffer.queue[obs][0])).item()
-                m.R+=m.alpha*TD_Error
+                States.append(m.buffer.queue[obs][0])
+                Actions.append(m.buffer.queue[obs][1])
+                TD_q.append(m.buffer.queue[obs][2]+m.value(torch.FloatTensor([m.buffer.queue[obs-1][0]]),torch.FloatTensor([m.buffer.queue[obs-1][1]])))
+                # TD_Error.append(m.buffer.queue[obs][2]-m.R+m.value(torch.FloatTensor(m.buffer.queue[obs-1][0]),torch.FloatTensor(m.buffer.queue[obs-1][1]))-m.value(torch.FloatTensor(States[-1]),torch.FloatTensor((Actions[-1]))))
+                # m.R+=m.alpha*TD_Error[-1]
+            m.value.zero_grad()
+            q_v = m.value(torch.FloatTensor(States), torch.FloatTensor(Actions))
+            TD_q_v=torch.FloatTensor(TD_q)
+            m.optimizer_value.zero_grad()
+            loss_c=F.mse_loss(q_v,TD_q_v.detach())
+            loss_c.backward()
+            m.optimizer_value.step()
+            m.optimizer_policy.zero_grad()
+            cur_actions_v = m.policy(torch.FloatTensor(States))
+            actor_loss_v = -m.value(torch.FloatTensor(States), cur_actions_v)
+            actor_loss_v = actor_loss_v.mean()
+            actor_loss_v.backward()
+            m.optimizer_policy.step()
+
 
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     
@@ -364,7 +400,9 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], d
     for BATCH in range(NUMBER_OF_BATCHES):
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
-       
+        for mod in Models:
+            print(f"{BATCH} - {mod.NAME} earned {mod.reward} during this episode!")
+    
 
 
 
@@ -380,5 +418,5 @@ if __name__ == "__main__":
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
     # cProfile.run("","Profile")
-    main([Toy_Model_NE_1.copy()])
+    main([Toy_Model_NE_1.copy(),Toy_Model_NE_2.copy()])
 
