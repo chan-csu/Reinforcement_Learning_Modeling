@@ -33,6 +33,7 @@ Episode = namedtuple('Episode', field_names=['reward', 'steps'])
 EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
 
 
+
 @dataclass
 class Buffer:
     """
@@ -56,13 +57,13 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 400),
+            nn.Linear(obs_size, 100),
+            nn.Linear(100, 100),
             nn.ReLU(),
-            nn.Linear(400, 300),
+            nn.Linear(100, 100),
             nn.ReLU(),
-            nn.Linear(300, act_size),
-            nn.Tanh(),
-            nn.Linear(act_size, act_size) )
+            nn.Linear(100, act_size),
+            nn.Tanh() )
 
     def forward(self, x):
        return self.net(x)
@@ -73,15 +74,32 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 400),
+            nn.Linear(obs_size, 40),
             nn.ReLU(),
+            nn.Linear(40, 40),
+            nn.ReLU(),
+             nn.Linear(40, 40),
+            nn.ReLU(), nn.Linear(40, 40),
+            nn.ReLU(), nn.Linear(40, 40),
+            nn.ReLU(), nn.Linear(40, 40),
+            nn.ReLU(), nn.Linear(40, 40),
+            nn.ReLU(), nn.Linear(40, 40)
+            
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(400 + act_size, 300),
+                       nn.Linear(40 + act_size, 100),
                        nn.ReLU(),
-                       nn.Linear(300, 1)
+                       nn.Linear(100, 100),
+                       nn.ReLU(),
+                       nn.Linear(100, 100),
+                       nn.ReLU(),
+                       nn.Linear(100, 100),
+                       nn.ReLU(),
+                       nn.Linear(100, 100),
+                       nn.ReLU(),
+                       nn.Linear(100, 1)
                        )
     
     def forward(self, x, a):
@@ -142,7 +160,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.01)
         m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
-        m.epsilon=0.05
+        m.epsilon=0.1
         m.buffer=Buffer(Value_Update_Window)
         m.alpha=0.01
         
@@ -156,10 +174,9 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     Outer_Counter = 0
 
 
-    for c in range(NUMBER_OF_BATCHES):
-        for m in Models:
-            m.epsilon=1/(1+np.exp(c/20))
-        Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
+    
+
+    Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
         # Batch_Out=list(map(list, zip(*Batch_Out)))
     #     for index,Model in enumerate(Models):
     #         Model.optimizer.zero_grad()
@@ -232,11 +249,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     for i,M in enumerate(Models):
 
         if random.random()<M.epsilon:
+            
+            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+            M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
+            M.a+=M.rand_act
 
-            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]*(1-M.epsilon)+np.random.uniform(low=-5, high=5,size=len(M.actions))*M.epsilon
-        
         else:
-
             M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
@@ -246,9 +264,16 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
                 
             
         for index,flux in enumerate(M.actions):
-            M.a[index]=Flux_Clipper(M.reactions[M.actions[index]].lower_bound,M.a[index],M.reactions[M.actions[index]].upper_bound)
-            M.reactions[M.actions[index]].lower_bound=M.a[index]
-            M.reactions[M.actions[index]].upper_bound=M.a[index]
+
+            if M.a[index]<0:
+            
+                M.reactions[M.actions[index]].lower_bound=M.a[index]*abs(M.reactions[M.actions[index]].lower_bound)
+
+            else:
+
+                M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
+
+            
 
         Sols[i] = Models[i].optimize()
 
@@ -280,20 +305,23 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             # TD_Error=[]
             States=[]
             Actions=[]
-            TD_q=[]
+            TD_q_p=[]
+            TD_q_N=[]
+            R=[]
             for obs in range(len(m.buffer.queue)-1,0,-1):
                 States.append(m.buffer.queue[obs][0])
                 Actions.append(m.buffer.queue[obs][1])
-                TD_q.append(-m.R+m.buffer.queue[obs][2]+m.value(torch.FloatTensor([m.buffer.queue[obs-1][0]]),torch.FloatTensor([m.buffer.queue[obs-1][1]])))
+                TD_q_p.append(m.buffer.queue[obs][2]+m.value(torch.FloatTensor([m.buffer.queue[obs-1][0]]),torch.FloatTensor([m.buffer.queue[obs-1][1]]))-m.R)
+                
                 # TD_Error.append(m.buffer.queue[obs][2]-m.R+m.value(torch.FloatTensor(m.buffer.queue[obs-1][0]),torch.FloatTensor(m.buffer.queue[obs-1][1]))-m.value(torch.FloatTensor(States[-1]),torch.FloatTensor((Actions[-1]))))
-                m.R+=m.alpha*TD_q[-1]
+                # R.append(m.R)
+                m.R+=m.alpha*(TD_q_p[-1]-m.value(torch.FloatTensor([States[-1]]),torch.FloatTensor(([Actions[-1]]))))
+
             m.value.zero_grad()
             q_v = m.value(torch.FloatTensor(States), torch.FloatTensor(Actions))
-            TD_q_v=torch.FloatTensor(TD_q)
+            TD_q_v=torch.FloatTensor(TD_q_p)
             m.optimizer_value.zero_grad()
-            print(F.mse_loss(q_v,TD_q_v))
-            print(m.R)
-            loss_c=F.mse_loss(q_v,TD_q_v.detach())
+            loss_c=F.mse_loss(TD_q_v.detach(),q_v)
             loss_c.backward()
             m.optimizer_value.step()
             m.optimizer_policy.zero_grad()
@@ -375,7 +403,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 10*(Compound/(Compound+20))
+    return 30*(Compound/(Compound+20))
 
 
 
@@ -403,8 +431,8 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], d
     for BATCH in range(NUMBER_OF_BATCHES):
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
-        # for mod in Models:
-        #     print(f"{BATCH} - {mod.NAME} earned {mod.episode_reward} during this episode!")
+        for mod in Models:
+            print(f"{BATCH} - {mod.NAME} earned {mod.episode_reward} during this episode!")
     
 
 
