@@ -77,8 +77,6 @@ class DDPGActor(nn.Module):
             nn.Linear(obs_size, 100),
             nn.Linear(100, 100),
             nn.ReLU(),
-            nn.Linear(100, 100),
-            nn.ReLU(),
             nn.Linear(100, act_size),
             nn.Tanh() )
 
@@ -97,9 +95,6 @@ class DDPGCritic(nn.Module):
             nn.ReLU(),
              nn.Linear(40, 40),
             nn.ReLU(), nn.Linear(40, 40),
-            nn.ReLU(), nn.Linear(40, 40),
-            nn.ReLU(), nn.Linear(40, 40),
-            nn.ReLU(), nn.Linear(40, 40),
             nn.ReLU(), nn.Linear(40, 40)
             
             )
@@ -107,12 +102,6 @@ class DDPGCritic(nn.Module):
 
         self.out_net = nn.Sequential(
                        nn.Linear(40 + act_size, 100),
-                       nn.ReLU(),
-                       nn.Linear(100, 100),
-                       nn.ReLU(),
-                       nn.Linear(100, 100),
-                       nn.ReLU(),
-                       nn.Linear(100, 100),
                        nn.ReLU(),
                        nn.Linear(100, 100),
                        nn.ReLU(),
@@ -176,20 +165,20 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.value=DDPGCritic(len(m.observables),len(m.actions))
         m.value_target=DDPGCritic(len(m.observables),len(m.actions))
         m.R=0
-        m.tau=0.0001
-        m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.01)
+        m.tau=0.01
+        m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.0001)
         m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
-        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
+        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
         m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.1
         m.buffer=Memory(10000)
         m.alpha=0.01
-        m.update_batch=200
+        m.update_batch=50
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.001,0.001+0.00000000001],[0.001,0.001+0.00000000001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.0000000001,0.00000001+0.00000000001],[0.00000001,0.00000001+0.00000000001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -212,11 +201,11 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
     #         writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
     
-    # Time=datetime.datetime.now().strftime("%d_%m_%Y.%H_%M_%S")
-    # Results_Dir=os.path.join(Main_dir,"Outputs",str(Time))
-    # os.mkdir(Results_Dir)
-    # with open(os.path.join(Results_Dir,"Models.pkl"),'wb') as f:
-    #     pickle.dump(Models,f)
+    Time=datetime.datetime.now().strftime("%d_%m_%Y.%H_%M_%S")
+    Results_Dir=os.path.join(Main_dir,"Outputs",str(Time))
+    os.mkdir(Results_Dir)
+    with open(os.path.join(Results_Dir,"Models.pkl"),'wb') as f:
+        pickle.dump(Models,f)
 
 
 def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
@@ -273,10 +262,10 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
         if random.random()<M.epsilon:
             
-            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
-            M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
-            M.a+=M.rand_act
-
+            # M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+            # M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
+            # M.a+=M.rand_act
+            M.a=np.random.uniform(low=-1, high=1,size=len(M.actions))
         else:
             M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
@@ -326,7 +315,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         m.buffer.push(torch.FloatTensor([C[m.observables]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]]).detach().numpy()[0])
         if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(100)
+            S,A,R,Sp=m.buffer.sample(50)
             Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
             next_actions = m.policy(torch.FloatTensor(Sp))
             next_Q = m.value_target.forward(torch.FloatTensor(Sp), next_actions.detach())
