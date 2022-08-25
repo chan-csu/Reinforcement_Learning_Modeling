@@ -24,32 +24,50 @@ from collections import namedtuple,deque
 from sklearn.preprocessing import StandardScaler
 import torch.nn.functional as F
 import warnings
+import torch.autograd
+from torch.autograd import Variable
+import gym
+
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
 NUMBER_OF_BATCHES=100
 Main_dir = os.path.dirname(os.path.abspath(__file__))
+
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
 EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
 
-
-
-@dataclass
-class Buffer:
-    """
-    A dataclass for feeding raw observations efficiently to pytorch.
-
-    Observations should be given in the form of (State,Actions,Reward)
-    """
-    window:int=10
-    batch:list[tuple]=field(default_factory=lambda:[(i,i,i) for i in range(10)])
-
-    def __post_init__(self):
-        self.queue=deque(self.batch,self.window)
+        
+class Memory:
+    def __init__(self, max_size):
+        self.buffer = deque(maxlen=max_size)
     
-    def update_queue(self,interaction:tuple):
-        self.queue.appendleft(interaction)
-    
+    def push(self, state, action, reward, next_state):
+        experience = (state, action, np.array([reward]), next_state)
+        self.buffer.append(experience)
+
+    def sample(self, batch_size):
+        state_batch = []
+        action_batch = []
+        reward_batch = []
+        next_state_batch = []
+        done_batch = []
+
+        batch = random.sample(self.buffer, batch_size)
+
+        for experience in batch:
+            state, action, reward, next_state = experience
+            state_batch.append(state)
+            action_batch.append(action)
+            reward_batch.append(reward)
+            next_state_batch.append(next_state)
+            
+        
+        return state_batch, action_batch, reward_batch, next_state_batch
+
+    def __len__(self):
+        return len(self.buffer)
+
 
 
 class DDPGActor(nn.Module):
@@ -106,7 +124,7 @@ class DDPGCritic(nn.Module):
         obs = self.obs_net(x)           
         return self.out_net(torch.cat([obs, a],dim=1))
 
-def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA",Value_Update_Window=10):
+def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -155,14 +173,20 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.observables=Obs
         m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
         m.policy=DDPGActor(len(m.observables),len(m.actions))
+        m.policy_target=DDPGActor(len(m.observables),len(m.actions))
         m.value=DDPGCritic(len(m.observables),len(m.actions))
+        m.value_target=DDPGCritic(len(m.observables),len(m.actions))
         m.R=0
+        m.tau=0.001
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.01)
+        m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
         m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
+        m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.1
-        m.buffer=Buffer(Value_Update_Window)
+        m.buffer=Memory(1000)
         m.alpha=0.01
+        m.update_batch=200
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
@@ -297,42 +321,47 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
                 else:
                     dCdt[i+len(Models)] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                     [i, j]]*C[j]
-
-
+    dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
+    Next_C=C+dCdt*dt
     for m in Models:
-        m.buffer.update_queue((C[m.observables],m.a,m.reward))
-        if Counter>0 and Counter%len(m.buffer.queue)==0:
+        m.buffer.push(torch.FloatTensor([C[m.observables]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]]).detach().numpy()[0])
+        if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            States=[]
-            Actions=[]
-            TD_q_p=[]
-            TD_q_N=[]
-            R=[]
-            for obs in range(len(m.buffer.queue)-1,0,-1):
-                States.append(m.buffer.queue[obs][0])
-                Actions.append(m.buffer.queue[obs][1])
-                TD_q_p.append(m.buffer.queue[obs][2]+m.value(torch.FloatTensor([m.buffer.queue[obs-1][0]]),torch.FloatTensor([m.buffer.queue[obs-1][1]]))-m.R)
-                
-                # TD_Error.append(m.buffer.queue[obs][2]-m.R+m.value(torch.FloatTensor(m.buffer.queue[obs-1][0]),torch.FloatTensor(m.buffer.queue[obs-1][1]))-m.value(torch.FloatTensor(States[-1]),torch.FloatTensor((Actions[-1]))))
-                # R.append(m.R)
-                m.R+=m.alpha*(TD_q_p[-1]-m.value(torch.FloatTensor([States[-1]]),torch.FloatTensor(([Actions[-1]]))))
-
-            m.value.zero_grad()
-            q_v = m.value(torch.FloatTensor(States), torch.FloatTensor(Actions))
-            TD_q_v=torch.FloatTensor(TD_q_p)
-            m.optimizer_value.zero_grad()
-            loss_c=F.mse_loss(TD_q_v.detach(),q_v)
-            loss_c.backward()
-            m.optimizer_value.step()
+            S,A,R,Sp=m.buffer.sample(30)
+            Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
+            next_actions = m.policy(torch.FloatTensor(Sp))
+            next_Q = m.value_target.forward(torch.FloatTensor(Sp), next_actions.detach())
+            Qprime = torch.FloatTensor(R) + next_Q
+            critic_loss=m.Net_Obj(Qvals,Qprime)
+            policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
             m.optimizer_policy.zero_grad()
-            cur_actions_v = m.policy(torch.FloatTensor(States))
-            actor_loss_v = -m.value(torch.FloatTensor(States), cur_actions_v)
-            actor_loss_v = actor_loss_v.mean()
-            actor_loss_v.backward()
+            policy_loss.backward()
             m.optimizer_policy.step()
+
+            m.optimizer_value.zero_grad()
+            critic_loss.backward() 
+            m.optimizer_value.step()
+            
+
+            for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
+                target_param.data.copy_(param.data * m.tau + target_param.data * (1.0 - m.tau))
+       
+            for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
+                target_param.data.copy_(param.data * m.tau + target_param.data * (1.0 - m.tau))
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         m.episode_reward+=m.reward
 
-    dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
+    
     
     return dCdt
 

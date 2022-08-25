@@ -45,7 +45,7 @@ class ProrityQueue:
         while len(self.Elements)>=self.N:
             self.dequeue()
     
-    
+
 class Net(nn.Module):
     def __init__(self, obs_size, hidden_size, n_actions):
         super(Net, self).__init__()
@@ -64,8 +64,7 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, n_actions),
+            nn.Linear(hidden_size, n_actions),nn.Tanh(),
             
         )
 
@@ -162,7 +161,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
 
 
-        M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+        M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
@@ -171,9 +170,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                 
             
         for index,flux in enumerate(M.actions):
-            M.a[index]=Flux_Clipper(M.reactions[flux].lower_bound,M.a[index],M.reactions[flux].upper_bound)
-            M.reactions[flux].lower_bound=M.a[index]
-            M.reactions[flux].upper_bound=M.a[index]
+            if M.a[index]<0:
+            
+                M.reactions[M.actions[index]].lower_bound=M.a[index]*abs(M.reactions[M.actions[index]].lower_bound)
+            else:
+                M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
+
 
         Sols[i] = Models[i].optimize()
 
@@ -271,7 +273,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 30*(Compound/(Compound+20))
+    return 10*(Compound/(Compound+20))
 
 
 
@@ -327,7 +329,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","19_08_2022.17_09_00","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","24_08_2022.14_57_36","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 

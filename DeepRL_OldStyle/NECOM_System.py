@@ -23,6 +23,7 @@ import ray
 from sklearn.preprocessing import StandardScaler
 from tensorboardX import SummaryWriter
 from heapq import heappop, heappush
+torch.manual_seed(0)
 
 Scaler=StandardScaler()
 
@@ -72,8 +73,7 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, n_actions),
+            nn.Linear(hidden_size, n_actions),nn.Tanh(),
             
         )
 
@@ -129,14 +129,14 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     for ind,m in enumerate(Models):
         m.observables=Obs
         m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
-        m.Policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
-        m.optimizer=optim.SGD(params=m.Policy.parameters(), lr=0.01)
+        m.policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
+        m.optimizer=optim.SGD(params=m.policy.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.05
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[1,0.001+0.00000000001],[1,0.001+0.00000000001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.001,0.001+0.00000000001],[0.001,0.001+0.00000000001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -146,13 +146,13 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
     for c in range(NUMBER_OF_BATCHES):
         for m in Models:
-            m.epsilon=0.01+0.99/(np.exp(c/20))
+            m.epsilon=0.05+0.95/(np.exp(c/20))
         Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
         Batch_Out=list(map(list, zip(*Batch_Out)))
         for index,Model in enumerate(Models):
             obs_v, acts_v, reward_b, reward_m=filter_batch(Batch_Out[index], PERCENTILE)
             Model.optimizer.zero_grad()
-            action_scores_v = Model.Policy(obs_v)
+            action_scores_v = Model.policy(obs_v)
             loss_v = Model.Net_Obj(action_scores_v, acts_v)
             loss_v.backward()
             Model.optimizer.step()
@@ -221,12 +221,13 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     for i,M in enumerate(Models):
         
         if random.random()<M.epsilon:
+            
+            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+            M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
+            M.a+=M.rand_act
 
-            M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]*(1-M.epsilon)+np.random.uniform(low=-0.2, high=0.2,size=len(M.actions))*M.epsilon
-        
         else:
-
-            M.a=M.Policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
@@ -235,9 +236,11 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                 
             
         for index,flux in enumerate(M.actions):
-            M.a[index]=Flux_Clipper(M.reactions[M.actions[index]].lower_bound,M.a[index],M.reactions[M.actions[index]].upper_bound)
-            M.reactions[M.actions[index]].lower_bound=M.a[index]
-            # M.reactions[M.actions[index]].upper_bound=M.a[index]
+            if M.a[index]<0:
+            
+                M.reactions[M.actions[index]].lower_bound=M.a[index]*abs(M.reactions[M.actions[index]].lower_bound)
+            else:
+                M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
 
         Sols[i] = Models[i].optimize()
 
