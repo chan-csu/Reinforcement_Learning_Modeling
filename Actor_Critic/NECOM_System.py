@@ -30,7 +30,7 @@ import gym
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
-NUMBER_OF_BATCHES=1000
+NUMBER_OF_BATCHES=10000
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
@@ -43,7 +43,7 @@ class Memory:
     
     def push(self, state, action, reward, next_state):
         experience = (state, action, np.array([reward]), next_state)
-        self.buffer.append(experience)
+        self.buffer.appendleft(experience)
 
     def sample(self, batch_size):
         state_batch = []
@@ -75,8 +75,8 @@ class DDPGActor(nn.Module):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, 100),
-            nn.Linear(100, 100),
-            nn.ReLU(),
+            nn.Linear(100, 100),nn.ReLU(),
+            nn.Linear(100, 100),nn.ReLU(),
             nn.Linear(100, act_size),
             nn.Tanh() )
 
@@ -89,22 +89,19 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 40),
-            nn.ReLU(),
-            nn.Linear(40, 40),
-            nn.ReLU(),
-             nn.Linear(40, 40),
-            nn.ReLU(), nn.Linear(40, 40),
-            nn.ReLU(), nn.Linear(40, 40)
+            nn.Linear(obs_size, 40),nn.ReLU(),
+            nn.Linear(40, 40),nn.ReLU(),
+            nn.Linear(40, 40),nn.ReLU(),
+            nn.Linear(40, 40)
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(40 + act_size, 100),
-                       nn.ReLU(),
-                       nn.Linear(100, 100),
-                       nn.ReLU(),
+                       nn.Linear(40 + act_size, 100),nn.ReLU(),
+                       nn.Linear(100, 100),nn.ReLU(),
+                       nn.Linear(100, 100),nn.ReLU(),
+                       nn.Linear(100, 100),nn.ReLU(),
                        nn.Linear(100, 1)
                        )
     
@@ -165,16 +162,16 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.value=DDPGCritic(len(m.observables),len(m.actions))
         m.value_target=DDPGCritic(len(m.observables),len(m.actions))
         m.R=0
-        m.tau=0.01
+        m.tau=0.001
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.0001)
         m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
         m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
         m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
-        m.epsilon=0.1
-        m.buffer=Memory(10000)
+        m.buffer=Memory(100000)
         m.alpha=0.01
-        m.update_batch=50
+        m.update_batch=200
+        m.gamma=0.95
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
@@ -271,7 +268,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
-                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=20
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=5
                 M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].lower_bound=-General_Uptake_Kinetics(C[index+len(Models)])
                 
             
@@ -295,7 +292,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
-            Models[i].reward =Sols[i].objective_value
+            Models[i].reward =Sols[i].objective_value*C[i]*10
 
 
 
@@ -315,7 +312,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         m.buffer.push(torch.FloatTensor([C[m.observables]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]]).detach().numpy()[0])
         if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(50)
+            S,A,R,Sp=m.buffer.sample(100)
             Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
             next_actions = m.policy(torch.FloatTensor(Sp))
             next_Q = m.value_target.forward(torch.FloatTensor(Sp), next_actions.detach())
@@ -420,7 +417,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 100*(Compound/(Compound+20))
+    return 10*(Compound/(Compound+20))
 
 
 

@@ -1,9 +1,9 @@
+import os 
+
 
 # Script for running Community Dynamic Flux Balance Analysis (CDFBA)
 # Written by: Parsa Ghadermazi
-from cmath import inf
 import datetime
-from xmlrpc.client import DateTime
 import numpy as np
 import cobra
 import os
@@ -23,62 +23,88 @@ import ray
 from sklearn.preprocessing import StandardScaler
 from tensorboardX import SummaryWriter
 from heapq import heappop, heappush
-torch.manual_seed(0)
 
 Scaler=StandardScaler()
-
-NUMBER_OF_BATCHES=100
-BATCH_SIZE=8
-HIDDEN_SIZE=30
-PERCENTILE=70
 CORES = multiprocessing.cpu_count()
 Main_dir = os.path.dirname(os.path.abspath(__file__))
+
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
 EpisodeStep = namedtuple('EpisodeStep', field_names=['observation', 'action'])
+class Memory:
+    def __init__(self, max_size):
+        self.buffer = deque(maxlen=max_size)
+    
+    def push(self, state, action, reward, next_state):
+        experience = (state, action, np.array([reward]), next_state)
+        self.buffer.append(experience)
 
-class ProrityQueue:
-    
-    def __init__(self,N):
-        self.N=N
-        self.Elements=[]
-    
-    def enqueue_with_priority(self,Step):
-        Element = (Step[0], random.random(),Step[1],Step[2])
-        heappush(self.Elements, Element)
+    def sample(self, batch_size):
+        state_batch = []
+        action_batch = []
+        reward_batch = []
+        next_state_batch = []
+        done_batch = []
 
-    def dequeue(self):
-        return heappop(self.Elements)[0]
-    
-    def balance(self):
-        while len(self.Elements)>=self.N:
-            self.dequeue()
-    
-    
+        batch = random.sample(self.buffer, batch_size)
 
-class Net(nn.Module):
-    def __init__(self, obs_size, hidden_size, n_actions):
-        super(Net, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(obs_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, n_actions),nn.Tanh(),
+        for experience in batch:
+            state, action, reward, next_state = experience
+            state_batch.append(state)
+            action_batch.append(action)
+            reward_batch.append(reward)
+            next_state_batch.append(next_state)
             
-        )
+        
+        return state_batch, action_batch, reward_batch, next_state_batch
+
+    def __len__(self):
+        return len(self.buffer)
+
+
+class DDPGActor(nn.Module):
+
+    def __init__(self, obs_size, act_size):
+        super(DDPGActor, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_size, 100),
+            nn.Linear(100, 100),nn.ReLU(),
+            nn.Linear(100, 100),nn.ReLU(),
+            nn.Linear(100, act_size),
+            nn.Tanh() )
 
     def forward(self, x):
-        return self.net(x)
+       return self.net(x)
+
+class DDPGCritic(nn.Module):       
+    
+    def __init__(self, obs_size, act_size):
+
+        super(DDPGCritic, self).__init__()
+        self.obs_net = nn.Sequential(
+            nn.Linear(obs_size, 40),nn.ReLU(),
+            nn.Linear(40, 40),nn.ReLU(),
+            nn.Linear(40, 40),nn.ReLU(),
+            nn.Linear(40, 40)
+            
+            )
+
+
+        self.out_net = nn.Sequential(
+                       nn.Linear(40 + act_size, 100),nn.ReLU(),
+                       nn.Linear(100, 100),nn.ReLU(),
+                       nn.Linear(100, 100),nn.ReLU(),
+                       nn.Linear(100, 100),nn.ReLU(),
+                       nn.Linear(100, 1)
+                       )
+    
+    def forward(self, x, a):
+        obs = self.obs_net(x)           
+        return self.out_net(torch.cat([obs, a],dim=1))
+
+
+
+
+
 
 
 def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA"):
@@ -95,21 +121,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
 
     """
-    # Adding Agents info ###-----------------------------------------------------
 
-    # State dimensions in this RLDFBA variant include: [Agent1,...,Agentn, glucose,starch]
-    for i in range(len(Models)):
-        if not hasattr(Models[i], "_name"):
-            Models[i].NAME = "Agent_" + str(i)
-            print(f"Agent {i} has been given a defult name")
-        Models[i].solver.objective.name = "_pfba_objective"
-    # -------------------------------------------------------------------------------
-
-    # Mapping internal reactions to external reactions, and operational parameter
-    # setup ###-------------------------------------------------------------------
-
-    # For more information about the structure of the ODEs,see ODE_System function
-    # or the documentation.
 
     Mapping_Dict = Build_Mapping_Matrix(Models)
     Init_C = np.ones((len(Models)+len(Mapping_Dict["Ex_sp"]),))
@@ -124,51 +136,16 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     }
 
     #Define Agent attributes
-    Obs=[i for i in range(len(Models))]
-    Obs.extend([Mapping_Dict["Ex_sp"].index(sp)+len(Models) for sp in Mapping_Dict["Ex_sp"] if sp!='P' ])
-    for ind,m in enumerate(Models):
-        m.observables=Obs
-        m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
-        m.policy=Net(len(m.observables), HIDDEN_SIZE, len(m.actions))
-        m.optimizer=optim.SGD(params=m.policy.parameters(), lr=0.01)
-        m.Net_Obj=nn.MSELoss()
-        m.epsilon=0.05
-        
+
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.00000000001,0.0000000001+0.00000000001],[0.000000001,0.0000000001+0.00000000001]]
-    for i in range(len(Models)):
-        Init_C[i] = 0.001
-        #Models[i].solver = "cplex"
-    writer = SummaryWriter(comment="-DeepRLDFBA_NECOM")
-    Outer_Counter = 0
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.100001],[0.1,0.100001],[100,100.0001],[0,0.00000000001],[0,0.000000000001]]
 
-
-    for c in range(NUMBER_OF_BATCHES):
-        for m in Models:
-            m.epsilon=0.05+0.95/(np.exp(c/20))
-        Batch_Out=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,Batch_Size=BATCH_SIZE)
-        Batch_Out=list(map(list, zip(*Batch_Out)))
-        for index,Model in enumerate(Models):
-            obs_v, acts_v, reward_b, reward_m=filter_batch(Batch_Out[index], PERCENTILE)
-            Model.optimizer.zero_grad()
-            action_scores_v = Model.policy(obs_v)
-            loss_v = Model.Net_Obj(action_scores_v, acts_v)
-            loss_v.backward()
-            Model.optimizer.step()
-            print(f"{Model.NAME}")
-            print("%d: loss=%.3f, reward_mean=%.3f, reward_bound=%.3f" % (c, loss_v.item(), reward_m, reward_b))
-
-            writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
+    Sol,t=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
+    Sol
     
-    Time=datetime.datetime.now().strftime("%d_%m_%Y.%H_%M_%S")
-    Results_Dir=os.path.join(Main_dir,"Outputs",str(Time))
-    os.mkdir(Results_Dir)
-    with open(os.path.join(Results_Dir,"Models.pkl"),'wb') as f:
-        pickle.dump(Models,f)
 
 
-@ray.remote
 def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     """
     This function calculates the concentration of each species
@@ -182,20 +159,15 @@ def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
     ##############################################################
     # Solving the ODE
     ##############################################################
-    for m in Models:
-        m.episode_reward=0
-        m.episode_steps=[]
+
     
     sol, t = odeFwdEuler(ODE_System, Init_C, dt,  Params,
                          t_span, Models, Mapping_Dict)
     
-    for m in Models:
-        m.Episode=Episode(reward=m.episode_reward, steps=m.episode_steps)
+    return sol,t
 
 
 
-
-    return [m.Episode for m in Models]
 
 
 def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
@@ -220,14 +192,9 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
     Sols = list([0 for i in range(Models.__len__())])
     for i,M in enumerate(Models):
         
-        if random.random()<M.epsilon:
-            
-            # M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
-            # M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
-            # M.a+=M.rand_act
-            M.a=np.random.uniform(low=-1, high=1,size=len(M.actions))
-        else:
-            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+
+
+        M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
@@ -236,21 +203,24 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                 
             
         for index,flux in enumerate(M.actions):
+
             if M.a[index]<0:
             
                 M.reactions[M.actions[index]].lower_bound=M.a[index]*abs(M.reactions[M.actions[index]].lower_bound)
+
             else:
+
                 M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
+
 
         Sols[i] = Models[i].optimize()
 
         if Sols[i].status == 'infeasible':
-            Models[i].reward= 0
             dCdt[i] = 0
 
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
-            Models[i].reward =Sols[i].objective_value*C[i]
+            Models[i].reward =Sols[i].objective_value
 
 
 
@@ -266,9 +236,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
                                                                     [i, j]]*C[j]
 
 
-    for m in Models:
-        m.episode_reward += m.reward
-        m.episode_steps.append(EpisodeStep(observation=C[m.observables], action=m.a))
+    
     
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     
@@ -341,7 +309,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 10*(Compound/(Compound+20))
+    return 100*(Compound/(Compound+20))
 
 
 
@@ -360,21 +328,17 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
     return sol, t
 
 
-def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict, Batch_Size=10,t_span=[0, 100], dt=0.1):
+def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], dt=0.1):
 
 
     Init_C[list(Params["Env_States"])] = [random.uniform(Range[0], Range[1]) for Range in Params["Env_States_Initial_Ranges"]]
     
 
-    
-    Batch_Episodes=[]
-    for BATCH in range(Batch_Size):
-        Batch_Episodes.append(dFBA.remote(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
+    Sol,t=dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
         # Batch_Episodes.append(dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt))
 
-    return(ray.get(Batch_Episodes))    
+    return Sol,t  
 
-    # return(Batch_Episodes)    
 
 
 def filter_batch(batch, percentile):
@@ -400,11 +364,8 @@ def Flux_Clipper(Min,Number,Max):
     
 
 if __name__ == "__main__":
-    # Init_Pols=[]
-    # for i in range(2):
-    #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
-    # cProfile.run("","Profile")
-    ray.init()
-    main([Toy_Model_NE_1.copy(),Toy_Model_NE_2.copy()])
+    with open(os.path.join(Main_dir,"Outputs","25_08_2022.15_53_04","Models.pkl"),"rb") as f:
+        Models=pickle.load(f)
+    main(Models)
 
