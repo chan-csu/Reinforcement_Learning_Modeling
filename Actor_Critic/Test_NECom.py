@@ -69,6 +69,7 @@ class DDPGActor(nn.Module):
             nn.Linear(obs_size, 100),
             nn.Linear(100, 100),nn.ReLU(),
             nn.Linear(100, 100),nn.ReLU(),
+            nn.Linear(100, 100),nn.ReLU(),
             nn.Linear(100, act_size),
             nn.Tanh() )
 
@@ -93,13 +94,13 @@ class DDPGCritic(nn.Module):
                        nn.Linear(40 + act_size, 100),nn.ReLU(),
                        nn.Linear(100, 100),nn.ReLU(),
                        nn.Linear(100, 100),nn.ReLU(),
-                       nn.Linear(100, 100),nn.ReLU(),
                        nn.Linear(100, 1)
                        )
     
     def forward(self, x, a):
         obs = self.obs_net(x)           
         return self.out_net(torch.cat([obs, a],dim=1))
+
 
 
 
@@ -198,7 +199,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
-                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=5
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=1
                 M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].lower_bound=-General_Uptake_Kinetics(C[index+len(Models)])
                 
             
@@ -309,7 +310,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 100*(Compound/(Compound+20))
+    return 20*(Compound/(Compound+20))
 
 
 
@@ -365,7 +366,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","25_08_2022.15_53_04","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","26_08_2022.11_50_19","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 

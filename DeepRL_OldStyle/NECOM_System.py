@@ -73,6 +73,17 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, n_actions),nn.Tanh(),
             
         )
@@ -231,7 +242,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
-                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=5
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=1
                 M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].lower_bound=-General_Uptake_Kinetics(C[index+len(Models)])
                 
             
@@ -341,7 +352,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 10*(Compound/(Compound+20))
+    return 20*(Compound/(Compound+20))
 
 
 

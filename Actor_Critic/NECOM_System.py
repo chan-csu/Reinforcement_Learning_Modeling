@@ -30,7 +30,7 @@ import gym
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
-NUMBER_OF_BATCHES=10000
+NUMBER_OF_BATCHES=1000
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
@@ -77,6 +77,7 @@ class DDPGActor(nn.Module):
             nn.Linear(obs_size, 100),
             nn.Linear(100, 100),nn.ReLU(),
             nn.Linear(100, 100),nn.ReLU(),
+            nn.Linear(100, 100),nn.ReLU(),
             nn.Linear(100, act_size),
             nn.Tanh() )
 
@@ -99,7 +100,6 @@ class DDPGCritic(nn.Module):
 
         self.out_net = nn.Sequential(
                        nn.Linear(40 + act_size, 100),nn.ReLU(),
-                       nn.Linear(100, 100),nn.ReLU(),
                        nn.Linear(100, 100),nn.ReLU(),
                        nn.Linear(100, 100),nn.ReLU(),
                        nn.Linear(100, 1)
@@ -162,20 +162,20 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.value=DDPGCritic(len(m.observables),len(m.actions))
         m.value_target=DDPGCritic(len(m.observables),len(m.actions))
         m.R=0
-        m.tau=0.001
-        m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.0001)
-        m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
-        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
-        m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
+        m.tau=0.1
+        m.optimizer_policy=optim.SGD(params=m.policy.parameters(), lr=0.01)
+        m.optimizer_policy_target=optim.SGD(params=m.policy.parameters(), lr=0.01)
+        m.optimizer_value=optim.SGD(params=m.value.parameters(), lr=0.01)
+        m.optimizer_value_target=optim.SGD(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.buffer=Memory(100000)
         m.alpha=0.01
-        m.update_batch=200
+        m.update_batch=100
         m.gamma=0.95
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.5+0.00000001],[0.1,0.5+0.00000001],[100,100+0.00001],[0.0000000001,0.00000001+0.00000000001],[0.00000001,0.00000001+0.00000000001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.0000000001,0.00000001+0.00000000001],[0.00000001,0.00000001+0.00000000001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -312,7 +312,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         m.buffer.push(torch.FloatTensor([C[m.observables]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]]).detach().numpy()[0])
         if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(100)
+            S,A,R,Sp=m.buffer.sample(50)
             Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
             next_actions = m.policy(torch.FloatTensor(Sp))
             next_Q = m.value_target.forward(torch.FloatTensor(Sp), next_actions.detach())
