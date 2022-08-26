@@ -175,7 +175,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.0000000001,0.00000001+0.00000000001],[0.00000001,0.00000001+0.00000000001]]
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.5+0.00000001],[0.1,0.5+0.00000001],[100,100+0.00001],[0.0000000001,0.00000001+0.00000000001],[0.00000001,0.00000001+0.00000000001]]
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -268,7 +268,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
-                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=5
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=1
                 M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].lower_bound=-General_Uptake_Kinetics(C[index+len(Models)])
                 
             
@@ -287,12 +287,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         Sols[i] = Models[i].optimize()
 
         if Sols[i].status == 'infeasible':
-            Models[i].reward= -10
+            Models[i].reward= 0
             dCdt[i] = 0
 
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
-            Models[i].reward =Sols[i].objective_value*C[i]*10
+            Models[i].reward =Sols[i].objective_value*C[i]
 
 
 
@@ -417,7 +417,7 @@ def General_Uptake_Kinetics(Compound: float, Model=""):
     Compound Unit: mmol
 
     """
-    return 10*(Compound/(Compound+20))
+    return 20*(Compound/(Compound+20))
 
 
 
