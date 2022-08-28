@@ -30,7 +30,7 @@ import gym
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
-NUMBER_OF_BATCHES=1000
+NUMBER_OF_BATCHES=10000
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
@@ -74,11 +74,10 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 100),
-            nn.Linear(100, 100),nn.ReLU(),
-            nn.Linear(100, 100),nn.ReLU(),
-            nn.Linear(100, 100),nn.ReLU(),
-            nn.Linear(100, act_size),
+            nn.Linear(obs_size, 30),
+            nn.Linear(30, 30),
+            nn.Linear(30, 30),
+            nn.Linear(30, act_size),
             nn.Tanh() )
 
     def forward(self, x):
@@ -90,19 +89,19 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 40),nn.ReLU(),
-            nn.Linear(40, 40),nn.ReLU(),
-            nn.Linear(40, 40),nn.ReLU(),
+            nn.Linear(obs_size, 40),
+            nn.Linear(40, 40),
+            nn.Linear(40, 40),
             nn.Linear(40, 40)
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(40 + act_size, 100),nn.ReLU(),
-                       nn.Linear(100, 100),nn.ReLU(),
-                       nn.Linear(100, 100),nn.ReLU(),
-                       nn.Linear(100, 1)
+                       nn.Linear(40 + act_size, 30),
+                       nn.Linear(30, 30),
+                       nn.Linear(30, 30),
+                       nn.Linear(30, 1)
                        )
     
     def forward(self, x, a):
@@ -162,20 +161,21 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.value=DDPGCritic(len(m.observables),len(m.actions))
         m.value_target=DDPGCritic(len(m.observables),len(m.actions))
         m.R=0
-        m.tau=0.1
-        m.optimizer_policy=optim.SGD(params=m.policy.parameters(), lr=0.01)
+        m.tau=0.005
+        m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.001)
         m.optimizer_policy_target=optim.SGD(params=m.policy.parameters(), lr=0.01)
-        m.optimizer_value=optim.SGD(params=m.value.parameters(), lr=0.01)
+        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
         m.optimizer_value_target=optim.SGD(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.buffer=Memory(100000)
         m.alpha=0.01
-        m.update_batch=100
+        m.update_batch=500
         m.gamma=0.95
         
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
     Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.0000000001,0.00000001+0.00000000001],[0.00000001,0.00000001+0.00000000001]]
+    Params["Env_States_Initial_MAX"]=np.array([1,1,100,10,10])
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -256,15 +256,17 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     dCdt = np.zeros(C.shape)
     Sols = list([0 for i in range(Models.__len__())])
     for i,M in enumerate(Models):
-
+        M.a=M.policy(torch.FloatTensor([C[M.observables]/Params["Env_States_Initial_MAX"]])).detach().numpy()[0]
         if random.random()<M.epsilon:
             
             # M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
             # M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
             # M.a+=M.rand_act
+            # M.a+=np.random.uniform(low=-(1+M.a), high=1-M.a,size=len(M.actions))/5
             M.a=np.random.uniform(low=-1, high=1,size=len(M.actions))
+
         else:
-            M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+            pass
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
@@ -292,7 +294,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
-            Models[i].reward =Sols[i].objective_value*C[i]
+            Models[i].reward =Sols[i].objective_value
 
 
 
@@ -309,16 +311,18 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     Next_C=C+dCdt*dt
     for m in Models:
-        m.buffer.push(torch.FloatTensor([C[m.observables]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]]).detach().numpy()[0])
+        m.buffer.push(torch.FloatTensor([C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0])
         if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(50)
+            S,A,R,Sp=m.buffer.sample(200)
             Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
             next_actions = m.policy(torch.FloatTensor(Sp))
             next_Q = m.value_target.forward(torch.FloatTensor(Sp), next_actions.detach())
             Qprime = torch.FloatTensor(R) + next_Q
             critic_loss=m.Net_Obj(Qvals,Qprime)
             policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
+            
+            
             m.optimizer_policy.zero_grad()
             policy_loss.backward()
             m.optimizer_policy.step()
@@ -445,6 +449,7 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], d
     for BATCH in range(NUMBER_OF_BATCHES):
         for model in Models:
             model.epsilon=0.01+0.99/(np.exp(BATCH/20))
+            model.tau=0.001+0.5/(np.exp(BATCH/20))
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
         for mod in Models:
