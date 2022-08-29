@@ -1,6 +1,7 @@
 
 # Script for running Community Dynamic Flux Balance Analysis (CDFBA)
 # Written by: Parsa Ghadermazi
+from asyncore import write
 from cmath import inf
 from dataclasses import dataclass,field
 import datetime
@@ -27,10 +28,13 @@ import warnings
 import torch.autograd
 from torch.autograd import Variable
 import gym
+from tensorboardX import SummaryWriter
+
+
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
-NUMBER_OF_BATCHES=10000
+NUMBER_OF_BATCHES=1000
 Main_dir = os.path.dirname(os.path.abspath(__file__))
 
 Episode = namedtuple('Episode', field_names=['reward', 'steps'])
@@ -179,13 +183,13 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
-    # writer = SummaryWriter(comment="-DeepRLDFBA_NECOM")
+    writer = SummaryWriter(comment="-DeepRLDFBA_NECOM")
     Outer_Counter = 0
 
 
     
 
-    Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
+    Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer)
         # Batch_Out=list(map(list, zip(*Batch_Out)))
     #     for index,Model in enumerate(Models):
     #         Model.optimizer.zero_grad()
@@ -440,7 +444,7 @@ def odeFwdEuler(ODE_Function, ICs, dt, Params, t_span, Models, Mapping_Dict):
     return sol, t
 
 
-def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], dt=0.1):
+def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 100], dt=0.1):
 
 
     Init_C[list(Params["Env_States"])] = [random.uniform(Range[0], Range[1]) for Range in Params["Env_States_Initial_Ranges"]]
@@ -454,6 +458,7 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,t_span=[0, 100], d
     
         for mod in Models:
             print(f"{BATCH} - {mod.NAME} earned {mod.episode_reward} during this episode!")
+            writer.add_scalar(f"{mod.NAME} reward_mean", mod.episode_reward, BATCH)
     
 
 

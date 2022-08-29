@@ -61,16 +61,16 @@ class Memory:
         return len(self.buffer)
 
 
+
 class DDPGActor(nn.Module):
 
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 100),
-            nn.Linear(100, 100),nn.ReLU(),
-            nn.Linear(100, 100),nn.ReLU(),
-            nn.Linear(100, 100),nn.ReLU(),
-            nn.Linear(100, act_size),
+            nn.Linear(obs_size, 30),
+            nn.Linear(30, 30),
+            nn.Linear(30, 30),
+            nn.Linear(30, act_size),
             nn.Tanh() )
 
     def forward(self, x):
@@ -82,29 +82,24 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 40),nn.ReLU(),
-            nn.Linear(40, 40),nn.ReLU(),
-            nn.Linear(40, 40),nn.ReLU(),
+            nn.Linear(obs_size, 40),
+            nn.Linear(40, 40),
+            nn.Linear(40, 40),
             nn.Linear(40, 40)
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(40 + act_size, 100),nn.ReLU(),
-                       nn.Linear(100, 100),nn.ReLU(),
-                       nn.Linear(100, 100),nn.ReLU(),
-                       nn.Linear(100, 1)
+                       nn.Linear(40 + act_size, 30),
+                       nn.Linear(30, 30),
+                       nn.Linear(30, 30),
+                       nn.Linear(30, 1)
                        )
     
     def forward(self, x, a):
         obs = self.obs_net(x)           
         return self.out_net(torch.cat([obs, a],dim=1))
-
-
-
-
-
 
 
 
@@ -141,7 +136,7 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     ### I Assume that the environment states are all observable. Env states will be stochastic
     Params["Env_States"]=Models[0].observables
     Params["Env_States_Initial_Ranges"]=[[0.1,0.100001],[0.1,0.100001],[100,100.0001],[0,0.00000000001],[0,0.000000000001]]
-
+    Params["Env_States_Initial_MAX"]=np.array([1,1,100,10,10])
     Sol,t=Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict)
     Sol
     
@@ -195,7 +190,8 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         
 
 
-        M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+        M.a=M.policy(torch.FloatTensor([C[M.observables]/Params["Env_States_Initial_MAX"]])).detach().numpy()[0]
+
         
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
@@ -366,7 +362,7 @@ def Flux_Clipper(Min,Number,Max):
 
 if __name__ == "__main__":
 
-    with open(os.path.join(Main_dir,"Outputs","26_08_2022.11_50_19","Models.pkl"),"rb") as f:
+    with open(os.path.join(Main_dir,"Outputs","28_08_2022.17_39_13","Models.pkl"),"rb") as f:
         Models=pickle.load(f)
     main(Models)
 
