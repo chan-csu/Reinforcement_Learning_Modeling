@@ -453,7 +453,7 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 
     for BATCH in range(NUMBER_OF_BATCHES):
         for model in Models:
             model.epsilon=0.01+0.99/(np.exp(BATCH/20))
-            model.tau=0.001+0.5/(np.exp(BATCH/20))
+            model.tau=0.001+0.1/(np.exp(BATCH/20))
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
         for mod in Models:
