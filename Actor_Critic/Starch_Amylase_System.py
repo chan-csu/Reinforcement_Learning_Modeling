@@ -1,6 +1,7 @@
 
 # Script for running Community Dynamic Flux Balance Analysis (CDFBA)
 # Written by: Parsa Ghadermazi
+
 from asyncore import write
 from cmath import inf
 from dataclasses import dataclass,field
@@ -16,7 +17,7 @@ import multiprocessing
 import pickle
 import pandas
 #import cplex
-from ToyModel import  Toy_Model_NE_1,Toy_Model_NE_2
+from ToyModel import  ToyModel_SA
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -29,7 +30,13 @@ from torch.autograd import Variable
 import gym
 from tensorboardX import SummaryWriter
 
+Scaler=StandardScaler()
 
+NUMBER_OF_BATCHES=1000
+BATCH_SIZE=16
+HIDDEN_SIZE=20
+PERCENTILE=70
+CORES = multiprocessing.cpu_count()
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
@@ -81,7 +88,9 @@ class DDPGActor(nn.Module):
             nn.Linear(30, 30),
             nn.Linear(30, 30),
             nn.Linear(30, act_size),
-            nn.Tanh() )
+            nn.ReLU(),
+            nn.Tanh(),
+             )
 
     def forward(self, x):
        return self.net(x)
@@ -111,7 +120,7 @@ class DDPGCritic(nn.Module):
         obs = self.obs_net(x)           
         return self.out_net(torch.cat([obs, a],dim=1))
 
-def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time: int = 100, Dil_Rate: float = 0.000000001, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -128,7 +137,8 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     # Adding Agents info ###-----------------------------------------------------
 
     # State dimensions in this RLDFBA variant include: [Agent1,...,Agentn, glucose,starch]
-    for i in range(len(Models)):
+    Number_of_Models = Models.__len__()
+    for i in range(Number_of_Models):
         if not hasattr(Models[i], "_name"):
             Models[i].NAME = "Agent_" + str(i)
             print(f"Agent {i} has been given a defult name")
@@ -142,23 +152,27 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     # or the documentation.
 
     Mapping_Dict = Build_Mapping_Matrix(Models)
-    Init_C = np.ones((len(Models)+len(Mapping_Dict["Ex_sp"]),))
-    Inlet_C = np.zeros((len(Models)+len(Mapping_Dict["Ex_sp"]),))
+    Init_C = np.ones((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))
+    Inlet_C = np.zeros((Models.__len__()+Mapping_Dict["Ex_sp"].__len__()+1,))
 
-    #Parameters that are use inside DFBA
+    # The Params are the main part to change from problem to problem
 
     Params = {
         "Dilution_Rate": Dil_Rate,
+        "Glucose_Index": Mapping_Dict["Ex_sp"].index("Glc")+Models.__len__(),
+        "Starch_Index": Mapping_Dict["Ex_sp"].__len__()+Models.__len__(),
+        "Amylase_Ind": Mapping_Dict["Ex_sp"].index("Amylase")+Models.__len__(),
         "Inlet_C": Inlet_C,
-        "Agents_Index": [i for i in range(len(Models))],
+        "Model_Glc_Conc_Index": [Models[i].reactions.index("Glc_Ex") for i in range(Number_of_Models)],
+        "Model_Amylase_Conc_Index": [Models[i].reactions.index("Amylase_Ex") for i in range(Number_of_Models)],
+        "Agents_Index": [i for i in range(Number_of_Models)],
     }
 
-    #Define Agent attributes
     Obs=[i for i in range(len(Models))]
-    Obs.extend([Mapping_Dict["Ex_sp"].index(sp)+len(Models) for sp in Mapping_Dict["Ex_sp"] if sp!='P' ])
+    Obs.extend([Params["Glucose_Index"],Params["Starch_Index"]])
     for ind,m in enumerate(Models):
         m.observables=Obs
-        m.actions=(Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("A"),ind],Mapping_Dict["Mapping_Matrix"][Mapping_Dict["Ex_sp"].index("B"),ind])
+        m.actions=(Models[i].reactions.index("Amylase_Ex"),)
         m.policy=DDPGActor(len(m.observables),len(m.actions))
         m.policy_target=DDPGActor(len(m.observables),len(m.actions))
         m.value=DDPGCritic(len(m.observables),len(m.actions))
@@ -172,13 +186,22 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
         m.Net_Obj=nn.MSELoss()
         m.buffer=Memory(100000)
         m.alpha=0.01
-        m.update_batch=500
+        m.update_batch=200
         m.gamma=0.95
-        
-    ### I Assume that the environment states are all observable. Env states will be stochastic
+    
+    Inlet_C[Params["Starch_Index"]] = 10
+    Params["Inlet_C"] = Inlet_C
+    
+    for i in range(Number_of_Models):
+        Init_C[i] = 0.001
+        #Models[i].solver = "cplex"
+    writer = SummaryWriter(comment="-DeepRLDFBA")
+    Outer_Counter = 0
+
+
     Params["Env_States"]=Models[0].observables
-    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[0.1,0.1+0.00000001],[100,100+0.00001],[0.0000000001,0.00000001+0.00000000001],[0.00000001,0.00000001+0.00000000001]]
-    Params["Env_States_Initial_MAX"]=np.array([1,1,100,10,10])
+    Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[100,100+0.00001],[10,10+0.00000000001]]
+    Params["Env_States_Initial_MAX"]=np.array([10,500,10])
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -189,23 +212,13 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
     
 
     Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer)
-        # Batch_Out=list(map(list, zip(*Batch_Out)))
-    #     for index,Model in enumerate(Models):
-    #         Model.optimizer.zero_grad()
-    #         action_scores_v = Model.Policy(obs_v)
-    #         loss_v = Model.Net_Obj(action_scores_v, acts_v)
-    #         loss_v.backward()
-    #         Model.optimizer.step()
-    #         print(f"{Model.NAME}")
-    #         print("%d: loss=%.3f, reward_mean=%.1f, reward_bound=%.1f" % (c, loss_v.item(), reward_m, reward_b))
-
-    #         writer.add_scalar(f"{Model.NAME} reward_mean", reward_m, c)
-    
     Time=datetime.datetime.now().strftime("%d_%m_%Y.%H_%M_%S")
     Results_Dir=os.path.join(Main_dir,"Outputs",str(Time))
     os.mkdir(Results_Dir)
     with open(os.path.join(Results_Dir,"Models.pkl"),'wb') as f:
         pickle.dump(Models,f)
+
+
 
 
 def dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=0.1):
@@ -266,14 +279,14 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             # M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
             # M.a+=M.rand_act
             # M.a+=np.random.uniform(low=-(1+M.a), high=1-M.a,size=len(M.actions))/5
-            M.a=np.random.uniform(low=-1, high=1,size=len(M.actions))
+            M.a=np.random.uniform(low=0, high=1,size=len(M.actions))
 
         else:
             pass
-        
+
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
-                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=1
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=10
                 M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].lower_bound=-General_Uptake_Kinetics(C[index+len(Models)])
                 
             
@@ -287,17 +300,18 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
                 M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
 
-            
-
+        
+        
         Sols[i] = Models[i].optimize()
 
         if Sols[i].status == 'infeasible':
-            Models[i].reward= 0
+            Models[i].reward=0
             dCdt[i] = 0
 
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
             Models[i].reward =Sols[i].objective_value
+
 
 
 
@@ -310,7 +324,14 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
                     dCdt[i] = 0
                 else:
                     dCdt[i+len(Models)] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
-                                                                    [i, j]]*C[j]
+                                                 [i, j]]*C[j]
+    dCdt[Params["Glucose_Index"]] += Starch_Degradation_Kinetics(
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
+
+    dCdt[Params["Starch_Index"]] = - \
+        Starch_Degradation_Kinetics(
+            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/10
+            
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     Next_C=C+dCdt*dt
     for m in Models:
@@ -354,7 +375,6 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         m.episode_reward+=m.reward
 
     
-    
     return dCdt
 
 
@@ -390,10 +410,6 @@ def Build_Mapping_Matrix(Models):
             else:
                 Mapping_Matrix[i, j] = -1
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
-
-
-
-
 
 
 def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 1):
@@ -466,7 +482,9 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 
 
 def Flux_Clipper(Min,Number,Max):
     return(min(max(Min,Number),Max))
-    
+
+
+
 
 if __name__ == "__main__":
     # Init_Pols=[]
@@ -474,5 +492,5 @@ if __name__ == "__main__":
     #     Init_Pols.append(os.path.join(Main_dir,"Outputs","Agent_"+str(i)+"_3900.pkl"))
 
     # cProfile.run("","Profile")
-    main([Toy_Model_NE_1.copy(),Toy_Model_NE_2.copy()])
+    main([ToyModel_SA.copy()])
 
