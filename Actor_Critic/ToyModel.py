@@ -97,7 +97,7 @@ ToyModel_SA.add_reaction(ATP_M)
 
 X = Metabolite('X', compartment='c')
 X_Production = Reaction('X_Production')
-X_Production.add_metabolites({S_x: -1, ATP: -100, ADP: 100, X: 1})
+X_Production.add_metabolites({S_x: -1, ATP: -10, ADP: 10, X: 0.05})
 X_Production.lower_bound = 0
 X_Production.upper_bound = 1000
 ToyModel_SA.add_reaction(X_Production)
@@ -114,7 +114,7 @@ ToyModel_SA.add_reaction(X_Release)
 
 P = Metabolite('P', compartment='c')
 P_Prod = Reaction('P_Prod')
-P_Prod.add_metabolites({S_x: -1, ATP: 1, ADP: -1, P: 0.1})
+P_Prod.add_metabolites({S_x: -0.1, ATP: 1, ADP: -1, P: 1})
 P_Prod.lower_bound = 0
 P_Prod.upper_bound = 1000
 ToyModel_SA.add_reaction(P_Prod)
@@ -131,25 +131,27 @@ ToyModel_SA.objective = 'X_Ex'
 ### Amylase Production ###
 Amylase_Prod = Reaction('Amylase_Prod')
 Amylase = Metabolite('Amylase', compartment='c')
-Amylase_Prod.add_metabolites({S_x: -1, ATP: -1, ADP: 1, Amylase: 1})
-Amylase_Prod.lower_bound = 0
+Amylase_Prod.add_metabolites({P: -1, ATP: -10, ADP: 10, Amylase: 1})
+Amylase_Prod.lower_bound =0
 Amylase_Prod.upper_bound = 1000
 ToyModel_SA.add_reaction(Amylase_Prod)
 
 ### Amylase Exchange ###
 Amylase_Ex = Reaction('Amylase_Ex')
 Amylase_Ex.add_metabolites({Amylase: -1})
-Amylase_Ex.lower_bound = 1
+Amylase_Ex.lower_bound = 0
 Amylase_Ex.upper_bound = 1000
 ToyModel_SA.add_reaction(Amylase_Ex)
+
 ToyModel_SA.Biomass_Ind=4
 
-#----------------------------------
 
-Toy_Model_NE_1 = Model('Toy_1')
+
+
 
 ### S_Uptake ###
-
+Toy_Model_NE_1 = Model('Toy_1')
+                       
 EX_S_sp1 = Reaction('EX_S_sp1')
 S = Metabolite('S', compartment='c')
 EX_S_sp1.add_metabolites({S: -1})
@@ -230,7 +232,7 @@ Biomass_1.upper_bound = 1000
 Toy_Model_NE_1.add_reaction(Biomass_1)
 
 Toy_Model_NE_1.objective='Biomass_1'
-Toy_Model_NE_1.Biomass_Ind=9
+Toy_Model_NE_1.Biomass_Ind=8
 
 
 ### ADP Production From Catabolism ###
@@ -318,7 +320,7 @@ Biomass_2.lower_bound = 0
 Biomass_2.upper_bound = 1000
 Toy_Model_NE_2.add_reaction(Biomass_2)
 Toy_Model_NE_2.objective="Biomass_2"
-Toy_Model_NE_2.Biomass_Ind=9
+Toy_Model_NE_2.Biomass_Ind=8
 
 
 
@@ -326,6 +328,7 @@ Toy_Model_NE_2.Biomass_Ind=9
 if __name__ == '__main__':
     print(ToyModel_SA.optimize().fluxes)
     print(ToyModel_SA.exchanges)
+    print(ToyModel_SA.optimize().status)
     print(Toy_Model_NE_1.optimize().fluxes)
     print(Toy_Model_NE_1.exchanges)
     print(Toy_Model_NE_2.optimize().fluxes)
