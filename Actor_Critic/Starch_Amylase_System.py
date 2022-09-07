@@ -79,13 +79,7 @@ class DDPGActor(nn.Module):
             nn.Linear(30, 30),
             nn.Linear(30, 30),
             nn.Linear(30, 30),
-            nn.Linear(30, 30),          
             nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),          
             nn.Linear(30, 30),
             nn.Linear(30, 30),
             nn.Linear(30, 30),
@@ -133,10 +127,7 @@ class DDPGCritic(nn.Module):
         self.out_net = nn.Sequential(
                        nn.Linear(40 + act_size, 30),
                        nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
+                       nn.Linear(30, 30),             
                        nn.Linear(30, 30),
                        nn.Linear(30, 30),
                        nn.Linear(30, 30),
@@ -219,13 +210,13 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
         m.R=0
         m.tau=0.005
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.001)
-        m.optimizer_policy_target=optim.SGD(params=m.policy.parameters(), lr=0.01)
+        m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
         m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
-        m.optimizer_value_target=optim.SGD(params=m.value.parameters(), lr=0.01)
+        m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.buffer=Memory(100000)
         m.alpha=0.01
-        m.update_batch=200
+        m.update_batch=500
         m.gamma=0.95
     
     Inlet_C[Params["Starch_Index"]] = 10
@@ -338,7 +329,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
             else:
 
-                M.reactions[M.actions[index]].lower_bound=M.a[index]*10
+                M.reactions[M.actions[index]].lower_bound=M.a[index]
 
         
         
@@ -378,23 +369,20 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         m.buffer.push(torch.FloatTensor([C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0])
         if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(200)
+            S,A,R,Sp=m.buffer.sample(500)
+            m.optimizer_value.zero_grad()
             Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
             next_actions = m.policy(torch.FloatTensor(Sp))
             next_Q = m.value_target.forward(torch.FloatTensor(Sp), next_actions.detach())
             # Qprime = torch.FloatTensor(R) + next_Q-m.R
             Qprime = torch.FloatTensor(R) + next_Q
             critic_loss=m.Net_Obj(Qvals,Qprime)
+            critic_loss.backward()
+            m.optimizer_value.step()
+            m.optimizer_policy.zero_grad()
             policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
             # m.R=m.alpha*torch.mean(Qvals-Qprime+torch.FloatTensor(R)-m.R).detach().numpy()
-            
-            m.optimizer_policy.zero_grad()
-            
-            
-
-            m.optimizer_value.zero_grad()
-            critic_loss.backward() 
-            m.optimizer_value.step()
+            policy_loss.backward()
             m.optimizer_policy.step()
             
 
@@ -454,7 +442,7 @@ def Build_Mapping_Matrix(Models):
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
 
 
-def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float = 0.1):
+def Starch_Degradation_Kinetics(a_Amylase: float, Starch: float, Model="", k: float =1):
     """
     This function calculates the rate of degradation of starch
     a_Amylase Unit: mmol
@@ -509,8 +497,8 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 
     
     for BATCH in range(NUMBER_OF_BATCHES):
         for model in Models:
-            model.epsilon=0.01+0.99/(np.exp(BATCH/60))
-            model.tau=0.001+0.1/(np.exp(BATCH/20))
+            model.epsilon=0.01+0.99/(np.exp(BATCH/20))
+            model.tau=0.00001+0.001/(np.exp(BATCH/20))
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
         for mod in Models:

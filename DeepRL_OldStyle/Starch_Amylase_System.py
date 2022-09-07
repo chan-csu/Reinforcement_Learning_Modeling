@@ -12,7 +12,7 @@ import multiprocessing
 import pickle
 import pandas
 #import cplex
-from ToyModel import ToyModel_Starch_Amylase as ToyModel_SA
+from ToyModel import ToyModel_SA as ToyModel_SA
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -67,7 +67,7 @@ class Net(nn.Module):
         return self.net(x)
 
 
-def main(Models: list = [ToyModel.copy(), ToyModel.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
