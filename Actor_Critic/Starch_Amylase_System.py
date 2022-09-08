@@ -25,7 +25,7 @@ from tensorboardX import SummaryWriter
 
 Scaler=StandardScaler()
 
-NUMBER_OF_BATCHES=1000
+NUMBER_OF_BATCHES=30000
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
@@ -48,7 +48,7 @@ class Memory:
         action_batch = []
         reward_batch = []
         next_state_batch = []
-        done_batch = []
+       
 
         batch = random.sample(self.buffer, batch_size)
 
@@ -72,23 +72,12 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, 30),
-            nn.Linear(30, act_size),
-            nn.Tanh(),
-            nn.ReLU()
+            nn.Linear(obs_size, 100),
+            nn.Linear(100,100),
+            nn.Linear(100, 100),
+            nn.Linear(100, 100),
+            nn.Linear(100, act_size),
+            nn.Softplus()
              )
 
     def forward(self, x):
@@ -100,50 +89,24 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40),
-            nn.Linear(40, 40)
+            nn.Linear(obs_size, 100),
+            nn.Linear(100, 100),
+            nn.Linear(100, 100),
+            nn.Linear(100, 100),         
+            nn.Linear(100, 100),
+            nn.Linear(100, 100)
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(40 + act_size, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),             
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 30),
-                       nn.Linear(30, 1)
+                       nn.Linear(100 + act_size, 100),
+                       nn.Linear(100, 100),
+                       nn.Linear(100, 100),
+                       nn.Linear(100, 100),
+                       nn.Linear(100, 100),
+                       nn.Linear(100, 100),
+                       nn.Linear(100, 1)
                        )
     
     def forward(self, x, a):
@@ -211,13 +174,13 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
         m.tau=0.005
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.001)
         m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
-        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
+        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.buffer=Memory(100000)
         m.alpha=0.01
         m.update_batch=500
-        m.gamma=0.95
+        m.gamma=1
     
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
@@ -307,10 +270,10 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         if random.random()<M.epsilon:
             
             # M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
-            # M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
+            # M.rand_act=np.random.uniform(low=-1, high=1,size=len(M.actions)).copy()
             # M.a+=M.rand_act
             # M.a+=np.random.uniform(low=-1, high=1,size=len(M.actions))
-            M.a=np.random.uniform(low=0, high=1,size=len(M.actions))
+            M.a=np.random.uniform(low=0, high=10,size=len(M.actions))
 
         else:
             pass
@@ -325,7 +288,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
             if M.a[index]<0:
             
-                M.reactions[M.actions[index]].lower_bound=M.a[index]*abs(M.reactions[M.actions[index]].lower_bound)
+                M.reactions[M.actions[index]].lower_bound=min(M.a[index],M.reactions[M.actions[index]].lower_bound)
 
             else:
 
@@ -369,28 +332,30 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         m.buffer.push(torch.FloatTensor([C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0])
         if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(500)
+            S,A,R,Sp=m.buffer.sample(100)
+            
             m.optimizer_value.zero_grad()
             Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
-            next_actions = m.policy(torch.FloatTensor(Sp))
-            next_Q = m.value_target.forward(torch.FloatTensor(Sp), next_actions.detach())
+            next_actions = m.policy_target(torch.FloatTensor(Sp)).detach()
+            next_Q = m.value_target(torch.FloatTensor(Sp), next_actions)
             # Qprime = torch.FloatTensor(R) + next_Q-m.R
-            Qprime = torch.FloatTensor(R) + next_Q
-            critic_loss=m.Net_Obj(Qvals,Qprime)
+            Qprime = torch.FloatTensor(R) +m.gamma*next_Q
+            critic_loss=m.Net_Obj(Qvals,Qprime.detach())
             critic_loss.backward()
             m.optimizer_value.step()
-            m.optimizer_policy.zero_grad()
+            
             policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
             # m.R=m.alpha*torch.mean(Qvals-Qprime+torch.FloatTensor(R)-m.R).detach().numpy()
+            m.optimizer_policy.zero_grad()
             policy_loss.backward()
             m.optimizer_policy.step()
             
-
-            for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
-                target_param.data.copy_(param.data * m.tau + target_param.data * (1.0 - m.tau))
-       
-            for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
-                target_param.data.copy_(param.data * m.tau + target_param.data * (1.0 - m.tau))
+        
+        for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
+            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau))
+    
+        for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
+            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau ))
         
         
         
@@ -497,8 +462,8 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 
     
     for BATCH in range(NUMBER_OF_BATCHES):
         for model in Models:
-            model.epsilon=0.01+0.99/(np.exp(BATCH/20))
-            model.tau=0.00001+0.001/(np.exp(BATCH/20))
+            model.epsilon=0.01+0.9/(np.exp(BATCH/30))
+            model.tau=0.01+0.1/(np.exp(BATCH/30))
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
         for mod in Models:
