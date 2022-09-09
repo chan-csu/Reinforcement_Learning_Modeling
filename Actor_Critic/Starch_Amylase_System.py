@@ -1,3 +1,4 @@
+from cmath import tanh
 import datetime
 
 import numpy as np
@@ -25,7 +26,7 @@ from tensorboardX import SummaryWriter
 
 Scaler=StandardScaler()
 
-NUMBER_OF_BATCHES=30000
+NUMBER_OF_BATCHES=300
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
@@ -72,12 +73,10 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 100),
-            nn.Linear(100,100),
-            nn.Linear(100, 100),
-            nn.Linear(100, 100),
-            nn.Linear(100, act_size),
-            nn.Softplus()
+            nn.Linear(obs_size, 400),nn.Tanh(),
+            nn.Linear(400,400),nn.Tanh(),
+            nn.Linear(400, act_size),
+            
              )
 
     def forward(self, x):
@@ -89,24 +88,18 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 100),
-            nn.Linear(100, 100),
-            nn.Linear(100, 100),
-            nn.Linear(100, 100),         
-            nn.Linear(100, 100),
-            nn.Linear(100, 100)
+            nn.Linear(obs_size, 300),nn.Tanh(),
+            nn.Linear(300,300),nn.Tanh(),   
+            nn.Linear(300,300),nn.Tanh(),
+            nn.Linear(300,20)
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(100 + act_size, 100),
-                       nn.Linear(100, 100),
-                       nn.Linear(100, 100),
-                       nn.Linear(100, 100),
-                       nn.Linear(100, 100),
-                       nn.Linear(100, 100),
-                       nn.Linear(100, 1)
+                       nn.Linear(20 + act_size, 300),nn.Tanh(),
+                       nn.Linear(300,300),nn.Tanh(),
+                       nn.Linear(300, 1)
                        )
     
     def forward(self, x, a):
@@ -174,10 +167,10 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
         m.tau=0.005
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.001)
         m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
-        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
+        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
         m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
-        m.buffer=Memory(100000)
+        m.buffer=Memory(10000)
         m.alpha=0.01
         m.update_batch=500
         m.gamma=1
@@ -273,7 +266,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             # M.rand_act=np.random.uniform(low=-1, high=1,size=len(M.actions)).copy()
             # M.a+=M.rand_act
             # M.a+=np.random.uniform(low=-1, high=1,size=len(M.actions))
-            M.a=np.random.uniform(low=0, high=10,size=len(M.actions))
+            M.a=np.random.uniform(low=0, high=5,size=len(M.actions))
 
         else:
             pass
@@ -320,11 +313,11 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
                     dCdt[i+len(Models)] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                  [i, j]]*C[j]
     dCdt[Params["Glucose_Index"]] += Starch_Degradation_Kinetics(
-                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*100
+                        C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
 
     dCdt[Params["Starch_Index"]] = - \
         Starch_Degradation_Kinetics(
-            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])
+            C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/100
             
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     Next_C=C+dCdt*dt
@@ -332,15 +325,20 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         m.buffer.push(torch.FloatTensor([C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0])
         if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(100)
+            S,A,R,Sp=m.buffer.sample(500)
             
-            m.optimizer_value.zero_grad()
+            
             Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
             next_actions = m.policy_target(torch.FloatTensor(Sp)).detach()
             next_Q = m.value_target(torch.FloatTensor(Sp), next_actions)
             # Qprime = torch.FloatTensor(R) + next_Q-m.R
             Qprime = torch.FloatTensor(R) +m.gamma*next_Q
             critic_loss=m.Net_Obj(Qvals,Qprime.detach())
+            
+            
+            
+            
+            m.optimizer_value.zero_grad()
             critic_loss.backward()
             m.optimizer_value.step()
             
@@ -462,8 +460,8 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 
     
     for BATCH in range(NUMBER_OF_BATCHES):
         for model in Models:
-            model.epsilon=0.01+0.9/(np.exp(BATCH/30))
-            model.tau=0.01+0.1/(np.exp(BATCH/30))
+            model.epsilon=0.001+0.9/(np.exp(BATCH/20))
+            model.tau=0.1/(np.exp(BATCH/20))
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
         for mod in Models:

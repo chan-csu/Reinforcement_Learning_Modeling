@@ -97,7 +97,7 @@ ToyModel_SA.add_reaction(ATP_M)
 
 X = Metabolite('X', compartment='c')
 X_Production = Reaction('X_Production')
-X_Production.add_metabolites({S_x: -1, ATP: -10, ADP: 10, X: 0.01})
+X_Production.add_metabolites({S_x: -1, ATP: -100, ADP: 100, X: 1})
 X_Production.lower_bound = 0
 X_Production.upper_bound = 1000
 ToyModel_SA.add_reaction(X_Production)
@@ -114,7 +114,7 @@ ToyModel_SA.add_reaction(X_Release)
 
 P = Metabolite('P', compartment='c')
 P_Prod = Reaction('P_Prod')
-P_Prod.add_metabolites({S_x: -0.1, ATP: 1, ADP: -1, P: 0.1})
+P_Prod.add_metabolites({S_x: -1, ATP: 1, ADP: -1, P: 0.1})
 P_Prod.lower_bound = 0
 P_Prod.upper_bound = 1000
 ToyModel_SA.add_reaction(P_Prod)
@@ -131,8 +131,8 @@ ToyModel_SA.objective = 'X_Ex'
 ### Amylase Production ###
 Amylase_Prod = Reaction('Amylase_Prod')
 Amylase = Metabolite('Amylase', compartment='c')
-Amylase_Prod.add_metabolites({P: -1, ATP: -20, ADP: 20, Amylase: 1})
-Amylase_Prod.lower_bound =0
+Amylase_Prod.add_metabolites({S_x: -1, ATP: -1, ADP: 1, Amylase: 1})
+Amylase_Prod.lower_bound = 0
 Amylase_Prod.upper_bound = 1000
 ToyModel_SA.add_reaction(Amylase_Prod)
 
@@ -327,6 +327,7 @@ Toy_Model_NE_2.Biomass_Ind=8
 
 if __name__ == '__main__':
     print(ToyModel_SA.optimize().fluxes)
+    print(ToyModel_SA.optimize().status)
     print(ToyModel_SA.exchanges)
     print(ToyModel_SA.optimize().status)
     print(Toy_Model_NE_1.optimize().fluxes)
