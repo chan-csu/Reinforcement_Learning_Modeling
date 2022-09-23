@@ -433,11 +433,21 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 300),nn.Tanh(),
-            nn.Linear(300,300),nn.Tanh(),
-            nn.Linear(300, act_size),
-            
-             )
+            nn.Linear(obs_size, 30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30, act_size),nn.Hardtanh(min_val=-30,max_val=30))
 
     def forward(self, x):
        return self.net(x)
@@ -448,18 +458,37 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 300),nn.Tanh(),
-            nn.Linear(300,300),nn.Tanh(),         
-            nn.Linear(300,300),nn.Tanh(),     
-            nn.Linear(300,20),
+            nn.Linear(obs_size, 30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),         
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,20),
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(20 + act_size, 300),nn.Tanh(),
-                       nn.Linear(300,300),nn.Tanh(), 
-                       nn.Linear(300, 1),
+                       nn.Linear(20 + act_size, 30),nn.Tanh(),
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30, 1),
                        )
     
     def forward(self, x, a):
@@ -847,16 +876,15 @@ def main(Models: list = [Toy_Model_NE_1.copy(), Toy_Model_NE_2.copy()], max_time
 
 Toy_Model_NE_1_A=Toy_Model_NE_1.copy()
 Toy_Model_NE_2_A=Toy_Model_NE_2.copy()
-Toy_Model_NE_1_A.remove_reactions('R_3_sp1')
+Toy_Model_NE_1_A.remove_reactions('R_2_sp1')
 Toy_Model_NE_1_A.Biomass_Ind=8
-Toy_Model_NE_2_A.remove_reactions('R_2_sp2')
+Toy_Model_NE_2_A.remove_reactions('R_3_sp2')
 Toy_Model_NE_2_A.Biomass_Ind=8
 Models_Auxotrophy=[Toy_Model_NE_1_A,Toy_Model_NE_2_A]
-
+Models_A=main(Models_Auxotrophy)
 
 # In[54]:
 
 
-Models_A=main(Models_Auxotrophy)
 
 
