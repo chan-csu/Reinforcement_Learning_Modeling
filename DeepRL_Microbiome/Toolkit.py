@@ -3,6 +3,12 @@ import cobra
 import torch
 import numpy as np
 
+class Simulation:
+    pass 
+
+
+
+
 class Environment:
     """ An environment is a collection of the following:
         agents: a list of objects of class Agent
@@ -43,9 +49,10 @@ class Environment:
         """ Determines the extracellular reactions for the community."""
         species=[item["reaction"].keys() for item in extracellular_reactions]
         new_species=[item for item in species if item not in self.species]
-        warn("The following species are not in the community: {}".format(new_species))
-        print("Adding the following species to the community: {}".format(new_species))
-        self.species.extend(new_species)
+        if len(new_species)>0:
+            warn("The following species are not in the community: {}".format(new_species))
+            print("Adding the following species to the community: {}".format(new_species))
+            self.species.extend(new_species)
 
 
 
