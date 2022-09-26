@@ -46,19 +46,6 @@ class Net(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Linear(hidden_size, hidden_size),
             nn.Linear(hidden_size, n_actions),
             
         )
@@ -133,7 +120,7 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
         m.observation=Params["State_Inds"].copy()
         m.actions=[Params["Model_Amylase_Conc_Index"][ind]]
         m.Policy=Net(len(m.observation), HIDDEN_SIZE, len(m.actions))
-        m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.01)
+        m.optimizer=optim.Adam(params=m.Policy.parameters(), lr=0.001)
         m.Net_Obj=nn.MSELoss()
         m.epsilon=0.01
     
@@ -251,7 +238,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt):
         for j in range(Models.__len__()):
             if Mapping_Dict["Mapping_Matrix"][i, j] != -1:
                 if Sols[j].status == 'infeasible':
-                    dCdt[i] = 0
+                    dCdt[i+Models.__len__()] += 0
                 else:
                     dCdt[i+Models.__len__()] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                                     [i, j]]*C[j]
