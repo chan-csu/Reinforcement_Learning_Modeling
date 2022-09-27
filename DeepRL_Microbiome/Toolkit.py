@@ -73,19 +73,16 @@ class Environment:
     
     def step(self):
         """ Performs a single step in the environment."""
+        
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
             M.a=M.actor_network(torch.FloatTensor([self.state[M.observables]])).detach().numpy()[0]
             if random.random()<M.epsilon:
-
-                # M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
-                # M.rand_act=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions)).copy()
-                # M.a+=M.rand_act
-                # M.a+=np.random.uniform(low=-(1+M.a), high=1-M.a,size=len(M.actions))/5
                 M.a+=np.random.uniform(low=-1, high=1,size=len(M.actions))
 
             else:
+
                 pass
             
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
@@ -115,7 +112,29 @@ class Environment:
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
                 self.agents[i].reward =Sols[i].objective_value
+                
+        # Handling the exchange reaction balances in the community
 
+        for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
+        
+            for j in range(len(self.agents)):
+
+                if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
+                    if Sols[j].status == 'infeasible':
+                        dCdt[i+len(self.agents)] += 0
+                    else:
+                        dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
+                                                    [i, j]]*self.state[j]
+        
+        # Handling extracellular reactions
+
+        for ex_reaction in self.extracellular_reactions:
+            rate=ex_reaction["kinetics"][0](*[self.state[self.species.index(item)] for item in ex_reaction["kinetics"][1]])
+            for metabolite in ex_reaction["reaction"].keys():
+                dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
+                
+        self.state += dCdt*self.dt
+        return self.state,(i.reward for i in self.agents),(i.a for i in self.agents)
 
 
     def batch_step(self):

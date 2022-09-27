@@ -73,9 +73,9 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 400),nn.Tanh(),
-            nn.Linear(400,400),nn.Tanh(),
-            nn.Linear(400, act_size),
+            nn.Linear(obs_size, 30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30, act_size),
             
              )
 
@@ -88,18 +88,18 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 300),nn.Tanh(),
-            nn.Linear(300,300),nn.Tanh(),   
-            nn.Linear(300,300),nn.Tanh(),
-            nn.Linear(300,20)
+            nn.Linear(obs_size, 30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),   
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,20)
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(20 + act_size, 300),nn.Tanh(),
-                       nn.Linear(300,300),nn.Tanh(),
-                       nn.Linear(300, 1)
+                       nn.Linear(20 + act_size, 30),nn.Tanh(),
+                       nn.Linear(30,30),nn.Tanh(),
+                       nn.Linear(30, 1)
                        )
     
     def forward(self, x, a):

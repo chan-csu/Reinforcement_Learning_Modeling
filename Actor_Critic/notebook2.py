@@ -290,7 +290,7 @@ Toy_Model_NE_2.Biomass_Ind=8
 
 Scaler=StandardScaler()
 
-NUMBER_OF_BATCHES=300
+NUMBER_OF_BATCHES=30000
 warnings.filterwarnings("ignore")
 Scaler=StandardScaler()
 HIDDEN_SIZE=20
@@ -339,13 +339,11 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30, act_size),
+            nn.Linear(obs_size, 300),nn.ReLU(),
+
+            nn.Linear(300,300),nn.ReLU(),
+            nn.Linear(300, act_size),
+            
             
              )
 
@@ -358,25 +356,17 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),         
-            nn.Linear(30,30),nn.Tanh(),   
-            nn.Linear(30,30),nn.Tanh(),         
-            nn.Linear(30,30),nn.Tanh(),    
-            nn.Linear(30,30),nn.Tanh(), 
-            nn.Linear(30,20),
+            nn.Linear(obs_size, 300),nn.ReLU(),
+            nn.Linear(300,300),nn.ReLU(),                      
+            nn.Linear(300,20),
             
             )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(20 + act_size, 30),nn.Tanh(),
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(),         
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30, 1),
+                       nn.Linear(20 + act_size, 300),nn.ReLU(),
+                       nn.Linear(300,300),nn.ReLU(),             
+                       nn.Linear(300, 1),
                        )
     
     def forward(self, x, a):
@@ -384,7 +374,7 @@ class DDPGCritic(nn.Module):
         return self.out_net(torch.cat([obs, a],dim=1))
 
 
-def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int = 100, Dil_Rate: float = 0.1, alpha: float = 0.01, Starting_Q: str = "FBA"):
+def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int = 100, Dil_Rate: float = 0.01, alpha: float = 0.01, Starting_Q: str = "FBA"):
     """
     This is the main function for running dFBA.
     The main requrement for working properly is
@@ -441,14 +431,14 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
         m.policy_target=DDPGActor(len(m.observables),len(m.actions))
         m.value=DDPGCritic(len(m.observables),len(m.actions))
         m.value_target=DDPGCritic(len(m.observables),len(m.actions))
-        m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.001)
+        m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.01)
         m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
-        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
+        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
-        m.buffer=Memory(1000)
+        m.buffer=Memory(100000)
         m.alpha=0.01
-        m.update_batch=10
+        m.update_batch=100
         m.gamma=1
     
     Inlet_C[Params["Starch_Index"]] = 10
@@ -463,7 +453,7 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
 
     Params["Env_States"]=Models[0].observables
     Params["Env_States_Initial_Ranges"]=[[0.1,0.1+0.00000001],[100,100+0.00001],[10,10+0.00000000001]]
-    Params["Env_States_Initial_MAX"]=np.array([10,500,10])
+    Params["Env_States_Initial_MAX"]=np.array([100,5000,10])
     for i in range(len(Models)):
         Init_C[i] = 0.001
         #Models[i].solver = "cplex"
@@ -539,7 +529,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         if random.random()<M.epsilon:
             
             # M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
-            M.a+=np.random.uniform(low=-5, high=5,size=len(M.actions)).copy()
+            M.a=np.random.uniform(low=0, high=15,size=len(M.actions)).copy()
             # M.a+=M.rand_act
     
             # M.a+=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions))/10
@@ -564,7 +554,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     
             else:
                 M.reactions[M.actions[index]].lower_bound=min(M.a[index],M.reactions[M.actions[index]].upper_bound)
-            M.reactions[M.actions[index]].upper_bound=M.reactions[M.actions[index]].lower_bound+0.0000000001
+            
         
         Sols[i] = Models[i].optimize()
 
@@ -589,13 +579,17 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
                 else:
                     dCdt[i+len(Models)] += Sols[j].fluxes.iloc[Mapping_Dict["Mapping_Matrix"]
                                                  [i, j]]*C[j]
+
+
     dCdt[Params["Glucose_Index"]] += Starch_Degradation_Kinetics(
                         C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])*10
+
 
     dCdt[Params["Starch_Index"]] = - \
         Starch_Degradation_Kinetics(
             C[Params["Amylase_Ind"]], C[Params["Starch_Index"]])/100
             
+
     dCdt += np.array(Params["Dilution_Rate"])*(Params["Inlet_C"]-C)
     Next_C=C+dCdt*dt
     for m in Models:
@@ -611,10 +605,6 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             # Qprime = torch.FloatTensor(R) + next_Q-m.R
             Qprime = torch.FloatTensor(R) +m.gamma*next_Q
             critic_loss=m.Net_Obj(Qvals,Qprime.detach())
-            
-            
-            
-            
             m.optimizer_value.zero_grad()
             critic_loss.backward()
             m.optimizer_value.step()
@@ -626,21 +616,11 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             m.optimizer_policy.step()
             
         
-        for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
-            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau))
-    
-        for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
-            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau ))
+            for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
+                target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau))
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
+            for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
+                target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau ))
         
         m.episode_reward+=m.reward
 
@@ -737,8 +717,8 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 
     
     for BATCH in range(NUMBER_OF_BATCHES):
         for model in Models:
-            model.epsilon=0.01
-            model.tau=0.01
+            model.epsilon=0.01+0.99*np.exp(-BATCH/100)
+            model.tau=0.1
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
         for mod in Models:

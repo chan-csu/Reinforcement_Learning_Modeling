@@ -436,17 +436,6 @@ class DDPGActor(nn.Module):
             nn.Linear(obs_size, 30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30, act_size),nn.Tanh())
 
     def forward(self, x):
