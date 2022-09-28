@@ -342,7 +342,7 @@ class DDPGActor(nn.Module):
             nn.Linear(obs_size, 300),nn.ReLU(),
 
             nn.Linear(300,300),nn.ReLU(),
-            nn.Linear(300, act_size),
+            nn.Linear(300, act_size),nn.Tanh()
             
             
              )
@@ -433,13 +433,13 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
         m.value_target=DDPGCritic(len(m.observables),len(m.actions))
         m.optimizer_policy=optim.Adam(params=m.policy.parameters(), lr=0.01)
         m.optimizer_policy_target=optim.Adam(params=m.policy.parameters(), lr=0.01)
-        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.01)
+        m.optimizer_value=optim.Adam(params=m.value.parameters(), lr=0.001)
         m.optimizer_value_target=optim.Adam(params=m.value.parameters(), lr=0.01)
         m.Net_Obj=nn.MSELoss()
         m.buffer=Memory(100000)
         m.alpha=0.01
         m.update_batch=100
-        m.gamma=1
+        m.gamma=0.99
     
     Inlet_C[Params["Starch_Index"]] = 10
     Params["Inlet_C"] = Inlet_C
@@ -529,10 +529,11 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
         if random.random()<M.epsilon:
             
             # M.a=M.policy(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
-            M.a=np.random.uniform(low=0, high=15,size=len(M.actions)).copy()
+            # M.a=np.random.uniform(low=0, high=15,size=len(M.actions)).copy()
             # M.a+=M.rand_act
     
             # M.a+=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions))/10
+            M.a=np.random.uniform(low=-1, high=1,size=len(M.actions)).copy()
 
 
         else:
@@ -540,7 +541,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
         for index,item in enumerate(Mapping_Dict["Ex_sp"]):
             if Mapping_Dict['Mapping_Matrix'][index,i]!=-1:
-                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=100
+                M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].upper_bound=20
                 M.reactions[Mapping_Dict['Mapping_Matrix'][index,i]].lower_bound=-General_Uptake_Kinetics(C[index+len(Models)])
                 
             
@@ -549,11 +550,12 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             
             if M.a[index]<0:
             
-                M.reactions[M.actions[index]].lower_bound=max(M.a[index],M.reactions[M.actions[index]].lower_bound)
-                # M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].lower_bound
+                # M.reactions[M.actions[index]].lower_bound=max(M.a[index],M.reactions[M.actions[index]].lower_bound)
+                M.reactions[M.actions[index]].lower_bound=-M.a[index]*M.reactions[M.actions[index]].lower_bound
     
             else:
-                M.reactions[M.actions[index]].lower_bound=min(M.a[index],M.reactions[M.actions[index]].upper_bound)
+                # M.reactions[M.actions[index]].lower_bound=min(M.a[index],M.reactions[M.actions[index]].upper_bound)
+                M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
             
         
         Sols[i] = Models[i].optimize()
@@ -564,7 +566,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
 
         else:
             dCdt[i] += Sols[i].objective_value*C[i]
-            Models[i].reward =Sols[i].objective_value
+            Models[i].reward =Sols[i].objective_value*C[i]
 
 
 
@@ -594,33 +596,34 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     Next_C=C+dCdt*dt
     for m in Models:
         m.buffer.push(torch.FloatTensor([C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0])
-        if Counter>0 and Counter%m.update_batch==0:
+        # if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-            S,A,R,Sp=m.buffer.sample(min(500,m.buffer.buffer.__len__()))
-            
-            
-            Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
-            next_actions = m.policy_target(torch.FloatTensor(Sp)).detach()
-            next_Q = m.value_target(torch.FloatTensor(Sp), next_actions)
-            # Qprime = torch.FloatTensor(R) + next_Q-m.R
-            Qprime = torch.FloatTensor(R) +m.gamma*next_Q
-            critic_loss=m.Net_Obj(Qvals,Qprime.detach())
-            m.optimizer_value.zero_grad()
-            critic_loss.backward()
-            m.optimizer_value.step()
-            
-            policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
-            # m.R=m.alpha*torch.mean(Qvals-Qprime+torch.FloatTensor(R)-m.R).detach().numpy()
-            m.optimizer_policy.zero_grad()
-            policy_loss.backward()
-            m.optimizer_policy.step()
-            
+        S,A,R,Sp=m.buffer.sample(min(500,m.buffer.buffer.__len__()))
         
-            for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
-                target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau))
+        m.optimizer_value.zero_grad()
+        Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
+        next_actions = m.policy_target(torch.FloatTensor(Sp)).detach()
+        next_Q = m.value_target(torch.FloatTensor(Sp), next_actions)
+        # Qprime = torch.FloatTensor(R) + next_Q-m.R
+        Qprime = torch.FloatTensor(R) +m.gamma*next_Q
+        critic_loss=m.Net_Obj(Qvals,Qprime.detach())
         
-            for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
-                target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau ))
+        critic_loss.backward()
+        m.optimizer_value.step()
+        
+        m.optimizer_policy.zero_grad()
+        policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
+        # m.R=m.alpha*torch.mean(Qvals-Qprime+torch.FloatTensor(R)-m.R).detach().numpy()
+        
+        policy_loss.backward()
+        m.optimizer_policy.step()
+        
+    
+        for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
+            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau))
+    
+        for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
+            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau ))
         
         m.episode_reward+=m.reward
 
