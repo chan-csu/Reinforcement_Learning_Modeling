@@ -339,10 +339,10 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 300),nn.ReLU(),
+            nn.Linear(obs_size, 300),nn.BatchNorm1d(300),nn.ReLU(),
 
-            nn.Linear(300,300),nn.ReLU(),
-            nn.Linear(300, act_size),nn.Tanh()
+            nn.Linear(300,300),nn.BatchNorm1d(300),nn.ReLU(),
+            nn.Linear(300, act_size),
             
             
              )
@@ -356,15 +356,22 @@ class DDPGCritic(nn.Module):
 
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 300),nn.ReLU(),
-            nn.Linear(300,300),nn.ReLU(),                      
+            nn.Linear(obs_size, 300),nn.BatchNorm1d(300),nn.ReLU(),
+            nn.Linear(300,300),nn.BatchNorm1d(300),nn.ReLU(),                      
             nn.Linear(300,20),
             
             )
 
 
         self.out_net = nn.Sequential(
+                       nn.BatchNorm1d(20 + act_size), 
                        nn.Linear(20 + act_size, 300),nn.ReLU(),
+                       nn.Linear(300,300),nn.ReLU(),             
+                       nn.Linear(300,300),nn.ReLU(),             
+                       nn.Linear(300,300),nn.ReLU(),             
+                       nn.Linear(300,300),nn.ReLU(),             
+                       nn.Linear(300,300),nn.ReLU(),             
+                       nn.Linear(300,300),nn.ReLU(),             
                        nn.Linear(300,300),nn.ReLU(),             
                        nn.Linear(300, 1),
                        )
@@ -438,7 +445,7 @@ def main(Models: list = [ToyModel_SA.copy(), ToyModel_SA.copy()], max_time: int 
         m.Net_Obj=nn.MSELoss()
         m.buffer=Memory(100000)
         m.alpha=0.01
-        m.update_batch=100
+        m.update_batch=500
         m.gamma=0.99
     
     Inlet_C[Params["Starch_Index"]] = 10
@@ -533,7 +540,7 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             # M.a+=M.rand_act
     
             # M.a+=np.random.uniform(low=-(M.a+1), high=1-M.a,size=len(M.actions))/10
-            M.a=np.random.uniform(low=-1, high=1,size=len(M.actions)).copy()
+            M.a=np.random.uniform(low=0, high=15,size=len(M.actions)).copy()
 
 
         else:
@@ -550,13 +557,13 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
             
             if M.a[index]<0:
             
-                # M.reactions[M.actions[index]].lower_bound=max(M.a[index],M.reactions[M.actions[index]].lower_bound)
-                M.reactions[M.actions[index]].lower_bound=-M.a[index]*M.reactions[M.actions[index]].lower_bound
+                M.reactions[M.actions[index]].lower_bound=max(M.a[index],M.reactions[M.actions[index]].lower_bound)
+                # M.reactions[M.actions[index]].lower_bound=-M.a[index]*M.reactions[M.actions[index]].lower_bound
     
             else:
-                # M.reactions[M.actions[index]].lower_bound=min(M.a[index],M.reactions[M.actions[index]].upper_bound)
-                M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
-            
+                M.reactions[M.actions[index]].lower_bound=min(M.a[index],M.reactions[M.actions[index]].upper_bound)
+                # M.reactions[M.actions[index]].lower_bound=M.a[index]*M.reactions[M.actions[index]].upper_bound
+            M.reactions[M.actions[index]].upper_bound=M.reactions[M.actions[index]].lower_bound+0.0000001
         
         Sols[i] = Models[i].optimize()
 
@@ -596,34 +603,34 @@ def ODE_System(C, t, Models, Mapping_Dict, Params, dt,Counter):
     Next_C=C+dCdt*dt
     for m in Models:
         m.buffer.push(torch.FloatTensor([C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0],m.a,m.reward,torch.FloatTensor([Next_C[m.observables]/Params["Env_States_Initial_MAX"]]).detach().numpy()[0])
-        # if Counter>0 and Counter%m.update_batch==0:
+        if Counter>0 and Counter%m.update_batch==0:
             # TD_Error=[]
-        S,A,R,Sp=m.buffer.sample(min(500,m.buffer.buffer.__len__()))
+            S,A,R,Sp=m.buffer.sample(min(500,m.buffer.buffer.__len__()))
+            
+            m.optimizer_value.zero_grad()
+            Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
+            next_actions = m.policy_target(torch.FloatTensor(Sp)).detach()
+            next_Q = m.value_target(torch.FloatTensor(Sp), next_actions)
+            # Qprime = torch.FloatTensor(R) + next_Q-m.R
+            Qprime = torch.FloatTensor(R) +m.gamma*next_Q
+            critic_loss=m.Net_Obj(Qvals,Qprime.detach())
+            print(critic_loss.item())
+            critic_loss.backward()
+            m.optimizer_value.step()
+            
+            m.optimizer_policy.zero_grad()
+            policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
+            # m.R=m.alpha*torch.mean(Qvals-Qprime+torch.FloatTensor(R)-m.R).detach().numpy()
+            
+            policy_loss.backward()
+            m.optimizer_policy.step()
+            
         
-        m.optimizer_value.zero_grad()
-        Qvals = m.value(torch.FloatTensor(S), torch.FloatTensor(A))
-        next_actions = m.policy_target(torch.FloatTensor(Sp)).detach()
-        next_Q = m.value_target(torch.FloatTensor(Sp), next_actions)
-        # Qprime = torch.FloatTensor(R) + next_Q-m.R
-        Qprime = torch.FloatTensor(R) +m.gamma*next_Q
-        critic_loss=m.Net_Obj(Qvals,Qprime.detach())
+            for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
+                target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau))
         
-        critic_loss.backward()
-        m.optimizer_value.step()
-        
-        m.optimizer_policy.zero_grad()
-        policy_loss = -m.value(torch.FloatTensor(S), m.policy(torch.FloatTensor(S))).mean()
-        # m.R=m.alpha*torch.mean(Qvals-Qprime+torch.FloatTensor(R)-m.R).detach().numpy()
-        
-        policy_loss.backward()
-        m.optimizer_policy.step()
-        
-    
-        for target_param, param in zip(m.policy_target.parameters(), m.policy.parameters()):
-            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau))
-    
-        for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
-            target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau ))
+            for target_param, param in zip(m.value_target.parameters(), m.value.parameters()):
+                target_param.data.copy_(param.data * m.tau + target_param.data * (1-m.tau ))
         
         m.episode_reward+=m.reward
 
@@ -721,7 +728,7 @@ def Generate_Batch(dFBA, Params, Init_C, Models, Mapping_Dict,writer,t_span=[0, 
     for BATCH in range(NUMBER_OF_BATCHES):
         for model in Models:
             model.epsilon=0.01+0.99*np.exp(-BATCH/100)
-            model.tau=0.1
+            model.tau=0.001
         dFBA(Models, Mapping_Dict, Init_C, Params, t_span, dt=dt)
     
         for mod in Models:

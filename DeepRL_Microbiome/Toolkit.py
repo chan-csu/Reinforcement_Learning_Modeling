@@ -63,7 +63,6 @@ class DDPGCritic(nn.Module):
             nn.Linear(obs_size, 30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),         
             nn.Linear(30,30),nn.Tanh(),     
-            nn.Linear(30,30),nn.Tanh(),     
             nn.Linear(30,20),
             
             )
@@ -71,6 +70,7 @@ class DDPGCritic(nn.Module):
 
         self.out_net = nn.Sequential(
                        nn.Linear(20 + act_size, 30),nn.Tanh(),
+                       nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30, 1),
                        )
@@ -164,7 +164,7 @@ class Environment:
         for i,M in enumerate(self.agents):
             M.a=M._actor_network(torch.FloatTensor([self.state[M.observables]])).detach().numpy()[0]
             if random.random()<M.epsilon:
-                M.a+=np.random.uniform(low=-1, high=1,size=len(M.actions))
+                M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
 
             else:
 
@@ -248,7 +248,7 @@ class Environment:
                 M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
             Sols[i] = self.agents[i].model.optimize()
             if Sols[i].status == 'infeasible':
-                self.agents[i].reward= 0
+                self.agents[i].reward= -10
                 dCdt[i] = 0
             else:
                 dCdt[i] += Sols[i].objective_value*C[i]
@@ -302,8 +302,8 @@ class Environment:
             agent.critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
             agent.target_actor_network_=agent.actor_network(len(agent.observables),len(agent.actions))
             agent.target_critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
-            agent.optimizer_value_ = agent.optimizer_value(agent.critic_network_.parameters(), lr=agent.lr)
-            agent.optimizer_policy_ = agent.optimizer_policy(agent.actor_network_.parameters(), lr=agent.lr)
+            agent.optimizer_value_ = agent.optimizer_value(agent.critic_network_.parameters(), lr=agent.lr_critic)
+            agent.optimizer_policy_ = agent.optimizer_policy(agent.actor_network_.parameters(), lr=agent.lr_actor)
 
 class Agent:
     """ Any microbial agent will be an instance of this class.
@@ -321,7 +321,8 @@ class Agent:
                 gamma:float,
                 update_batch_size:int,
                 epsilon:float=0.01,
-                lr:float=0.001,
+                lr_actor:float=0.01,
+                lr_critic:float=0.001,
                 tau:float=0.001) -> None:
 
         self.name = name
@@ -339,7 +340,8 @@ class Agent:
         self.optimizer_value = optimizer_value
         self.optimizer_policy = optimizer_policy
         self.tau = tau
-        self.lr = lr
+        self.lr_actor = lr_actor
+        self.lr_critic = lr_critic
 
 
 

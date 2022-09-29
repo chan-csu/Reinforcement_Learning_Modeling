@@ -18,7 +18,8 @@ agent1=tk.Agent("agent1",
                 actions=['EX_A_sp1','EX_B_sp1'],
                 gamma=0.999,
                 update_batch_size=32,
-                lr=0.0001
+                lr_actor=0.01,
+                lr_critic=0.0001
                 )
 
 agent2=tk.Agent("agent2",
@@ -32,7 +33,8 @@ agent2=tk.Agent("agent2",
                 buffer=tk.Memory(max_size=100000),
                 gamma=0.999,
                 update_batch_size=32,
-                lr=0.0001 
+                lr_actor=0.01,
+                lr_critic=0.0001
 )
 
 agents=[agent1,agent2]
@@ -49,7 +51,7 @@ env=tk.Environment(name="Toy-NECOM",
                            'B':10,})
 env.reset()
 for epoch in range(1000):
-    Batch=env.batch_step(env.generate_random_c(40))
+    Batch=env.batch_step(env.generate_random_c(8))
     for i in Batch:
         for ind,ag in enumerate(env.agents):
             ag.buffer.push(i[0][ag.observables],i[2][ind],i[1][ind],i[3][ag.observables])
@@ -60,6 +62,7 @@ for epoch in range(1000):
         next_actions = ag.actor_network_(torch.FloatTensor(Sp))
         next_Q = ag.target_critic_network_.forward(torch.FloatTensor(Sp), next_actions.detach())
         Qprime = torch.FloatTensor(np.expand_dims(np.array(R),1)) + next_Q
+        print(np.sum(R))
         critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
         critic_loss.backward()
         ag.optimizer_value_.step()
