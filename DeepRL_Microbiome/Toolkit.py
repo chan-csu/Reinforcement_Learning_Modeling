@@ -13,7 +13,7 @@ class Memory:
         self.buffer = deque(maxlen=max_size)
     
     def push(self, state, action, reward, next_state):
-        experience = (state, action, np.array([reward]), next_state)
+        experience = (state, action, np.array(reward), next_state)
         self.buffer.appendleft(experience)
 
     def sample(self, batch_size):
@@ -21,7 +21,7 @@ class Memory:
         action_batch = []
         reward_batch = []
         next_state_batch = []
-        done_batch = []
+        
 
         batch = random.sample(self.buffer, batch_size)
 
@@ -33,7 +33,7 @@ class Memory:
             next_state_batch.append(next_state)
             
         
-        return state_batch, action_batch, reward_batch, next_state_batch
+        return state_batch,reward_batch, action_batch,next_state_batch
 
     def __len__(self):
         return len(self.buffer)
@@ -62,6 +62,7 @@ class DDPGCritic(nn.Module):
         self.obs_net = nn.Sequential(
             nn.Linear(obs_size, 30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),         
+            nn.Linear(30,30),nn.Tanh(),     
             nn.Linear(30,30),nn.Tanh(),     
             nn.Linear(30,20),
             
@@ -226,7 +227,7 @@ class Environment:
         dCdt = np.zeros(C.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=M._actor_network(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
+            M.a=M.actor_network_(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
             if random.random()<M.epsilon:
                 M.a+=np.random.uniform(low=-1, high=1,size=len(M.actions))  
             else:   
@@ -236,6 +237,7 @@ class Environment:
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
                     M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=100
                     M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(C[index+len(self.agents)])    
+            
             for index,flux in enumerate(M.actions): 
                 if M.a[index]<0:
                 
@@ -296,11 +298,12 @@ class Environment:
     def set_networks(self):
         """ Sets the networks for the agents in the environment."""
         for agent in self.agents:
-            agent._actor_network=agent.actor_network(len(agent.observables),len(agent.actions))
-            agent._critic_network=agent.critic_network(len(agent.observables),len(agent.actions))
-            agent._target_actor_network=agent.actor_network(len(agent.observables),len(agent.actions))
-            agent._target_critic_network=agent.critic_network(len(agent.observables),len(agent.actions))
-
+            agent.actor_network_=agent.actor_network(len(agent.observables),len(agent.actions))
+            agent.critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
+            agent.target_actor_network_=agent.actor_network(len(agent.observables),len(agent.actions))
+            agent.target_critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
+            agent.optimizer_value_ = agent.optimizer_value(agent.critic_network_.parameters(), lr=agent.lr)
+            agent.optimizer_policy_ = agent.optimizer_policy(agent.actor_network_.parameters(), lr=agent.lr)
 
 class Agent:
     """ Any microbial agent will be an instance of this class.
@@ -310,12 +313,16 @@ class Agent:
                 model:cobra.Model,
                 actor_network:DDPGActor,
                 critic_network:DDPGCritic,
+                optimizer_value:torch.optim.Adam,
+                optimizer_policy:torch.optim.Adam,
                 actions:list[str],
                 observables:list[str],
                 buffer:Memory,
                 gamma:float,
                 update_batch_size:int,
-                epsilon:float=0.01) -> None:
+                epsilon:float=0.01,
+                lr:float=0.001,
+                tau:float=0.001) -> None:
 
         self.name = name
         self.buffer = buffer
@@ -329,6 +336,11 @@ class Agent:
         self.observables = observables
         self.epsilon = epsilon
         self.general_uptake_kinetics=lambda C: 20*(C/(C+20))
+        self.optimizer_value = optimizer_value
+        self.optimizer_policy = optimizer_policy
+        self.tau = tau
+        self.lr = lr
+
 
 
         

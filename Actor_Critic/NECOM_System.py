@@ -45,7 +45,7 @@ class Memory:
         self.buffer = deque(maxlen=max_size)
     
     def push(self, state, action, reward, next_state):
-        experience = (state, action, np.array([reward]), next_state)
+        experience = (state, action, np.array(reward), next_state)
         self.buffer.appendleft(experience)
 
     def sample(self, batch_size):
