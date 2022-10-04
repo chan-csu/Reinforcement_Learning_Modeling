@@ -12,8 +12,8 @@ class Memory:
     def __init__(self, max_size):
         self.buffer = deque(maxlen=max_size)
     
-    def push(self, state, action, reward, next_state):
-        experience = (state, action, np.array(reward), next_state)
+    def push(self, state,reward, action, next_state):
+        experience = (state, np.array(reward), action, next_state)
         self.buffer.appendleft(experience)
 
     def sample(self, batch_size):
@@ -26,7 +26,7 @@ class Memory:
         batch = random.sample(self.buffer, batch_size)
 
         for experience in batch:
-            state, action, reward, next_state = experience
+            state,reward , action, next_state = experience
             state_batch.append(state)
             action_batch.append(action)
             reward_batch.append(reward)
@@ -49,6 +49,11 @@ class DDPGActor(nn.Module):
             nn.Linear(obs_size, 30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30, act_size))
 
     def forward(self, x):
@@ -61,8 +66,13 @@ class DDPGCritic(nn.Module):
         super(DDPGCritic, self).__init__()
         self.obs_net = nn.Sequential(
             nn.Linear(obs_size, 30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),         
-            nn.Linear(30,30),nn.Tanh(),     
+            nn.Linear(30,30),nn.Tanh(),            
+            nn.Linear(30,30),nn.Tanh(),            
+            nn.Linear(30,30),nn.Tanh(),            
+            nn.Linear(30,30),nn.Tanh(),            
+            nn.Linear(30,30),nn.Tanh(),            
+            nn.Linear(30,30),nn.Tanh(),            
+            nn.Linear(30,30),nn.Tanh(),            
             nn.Linear(30,20),
             
             )
@@ -70,6 +80,9 @@ class DDPGCritic(nn.Module):
 
         self.out_net = nn.Sequential(
                        nn.Linear(20 + act_size, 30),nn.Tanh(),
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30, 1),
@@ -101,7 +114,7 @@ class Environment:
                 initial_condition:dict,
                 inlet_conditions:dict,
                 dt:float=0.1,
-                dilution_rate:float=0.1,
+                dilution_rate:float=0.05,
                 min_c:dict={},
                 max_c:dict={},
                 
@@ -162,9 +175,11 @@ class Environment:
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=M._actor_network(torch.FloatTensor([self.state[M.observables]])).detach().numpy()[0]
+            M.a=M.actor_network_(torch.FloatTensor([self.state[M.observables]])).detach().numpy()[0]
             if random.random()<M.epsilon:
-                M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
+                M.a+=np.random.uniform(low=-20, high=20,size=len(M.actions))
+                # M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
+                # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
 
             else:
 
@@ -195,7 +210,7 @@ class Environment:
                 dCdt[i] = 0
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
-                self.agents[i].reward =Sols[i].objective_value
+                self.agents[i].reward =Sols[i].objective_value*self.state[i]
                 
         # Handling the exchange reaction balances in the community
 
@@ -217,8 +232,10 @@ class Environment:
             for metabolite in ex_reaction["reaction"].keys():
                 dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
         dCdt+=self.dilution_rate*(self.inlet_conditions-self.state)
+        C=self.state.copy()
         self.state += dCdt*self.dt
-        return self.state,(i.reward for i in self.agents),(i.a for i in self.agents)
+        Cp=self.state.copy()
+        return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
 
     @ray.remote
@@ -271,6 +288,7 @@ class Environment:
                 dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
         dCdt+=self.dilution_rate*(self.inlet_conditions-C)
         Cp=C + dCdt*self.dt
+        Cp[Cp<0]=0
         return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
     def generate_random_c(self,size:int):
@@ -321,9 +339,11 @@ class Agent:
                 gamma:float,
                 update_batch_size:int,
                 epsilon:float=0.01,
-                lr_actor:float=0.01,
+                lr_actor:float=0.001,
                 lr_critic:float=0.001,
-                tau:float=0.001) -> None:
+                buffer_sample_size:int=500,
+                tau:float=0.001,
+                alpha:float=0.0001) -> None:
 
         self.name = name
         self.buffer = buffer
@@ -336,13 +356,15 @@ class Agent:
         self.actions = [self.model.reactions.index(item) for item in actions]
         self.observables = observables
         self.epsilon = epsilon
-        self.general_uptake_kinetics=lambda C: 20*(C/(C+20))
+        self.general_uptake_kinetics=lambda C: 50*(C/(C+20))
         self.optimizer_value = optimizer_value
         self.optimizer_policy = optimizer_policy
         self.tau = tau
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
-
+        self.buffer_sample_size = buffer_sample_size
+        self.R=0
+        self.alpha = alpha
 
 
         
