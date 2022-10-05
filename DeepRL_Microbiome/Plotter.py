@@ -7,7 +7,7 @@ def main(t):
     plt.clf()
     plt.plot(Data)
     plt.legend(Data.columns)
-    plt.ylim(0,5)
+    plt.ylim(0,1)
 
 
 

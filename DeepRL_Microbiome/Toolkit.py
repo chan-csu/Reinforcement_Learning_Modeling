@@ -8,6 +8,7 @@ import torch.nn as nn
 from collections import deque,namedtuple
 import ray
 
+cross_entropy_loss=nn.CrossEntropyLoss()
 class Memory:
     def __init__(self, max_size):
         self.buffer = deque(maxlen=max_size)
@@ -40,17 +41,28 @@ class Memory:
 
 
 
+class Feasibility_Classifier(nn.Module):
+    def __init__(self,num_states,num_action, hidden_size,output_size=2):
+        super(Feasibility_Classifier, self).__init__()
+        self.net =nn.Sequential(nn.Linear(num_states+num_action, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),
+        nn.Linear(hidden_size, output_size))
+        
 
+    def forward(self, x):
+        return self.net(x)
+    
 class DDPGActor(nn.Module):
 
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_size, 30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
@@ -177,8 +189,8 @@ class Environment:
         for i,M in enumerate(self.agents):
             M.a=M.actor_network_(torch.FloatTensor([self.state[M.observables]])).detach().numpy()[0]
             if random.random()<M.epsilon:
-                M.a+=np.random.uniform(low=-20, high=20,size=len(M.actions))
-                # M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
+                # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
+                M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
                 # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
 
             else:
@@ -201,17 +213,25 @@ class Environment:
                 else:
                     M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],M.model.reactions[M.actions[index]].upper_bound)
 
-                M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001
-
+                M.a[index]=M.model.reactions[M.actions[index]].lower_bound
 
             Sols[i] = self.agents[i].model.optimize()
+            self.agents[i].feasibility_optimizer_.zero_grad()
             if Sols[i].status == 'infeasible':
                 self.agents[i].reward= 0
                 dCdt[i] = 0
+                pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
+                l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
+            
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
                 self.agents[i].reward =Sols[i].objective_value*self.state[i]
-                
+                pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
+                l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
+            l.backward()
+
+            self.agents[i].feasibility_optimizer_.step()
+            print(l)
         # Handling the exchange reaction balances in the community
 
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
@@ -322,6 +342,8 @@ class Environment:
             agent.target_critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
             agent.optimizer_value_ = agent.optimizer_value(agent.critic_network_.parameters(), lr=agent.lr_critic)
             agent.optimizer_policy_ = agent.optimizer_policy(agent.actor_network_.parameters(), lr=agent.lr_actor)
+            agent.feasibility_network_=agent.feasibility_classifier(len(agent.observables),len(agent.actions),50)
+            agent.feasibility_optimizer_=agent.feasibility_optimizer(agent.feasibility_network_.parameters(),lr=0.001)
 
 class Agent:
     """ Any microbial agent will be an instance of this class.
@@ -333,6 +355,8 @@ class Agent:
                 critic_network:DDPGCritic,
                 optimizer_value:torch.optim.Adam,
                 optimizer_policy:torch.optim.Adam,
+                feasibility_classifier:Feasibility_Classifier,
+                feasibility_optimizer:torch.optim.Adam,
                 actions:list[str],
                 observables:list[str],
                 buffer:Memory,
@@ -343,7 +367,7 @@ class Agent:
                 lr_critic:float=0.001,
                 buffer_sample_size:int=500,
                 tau:float=0.001,
-                alpha:float=0.0001) -> None:
+                alpha:float=0.001) -> None:
 
         self.name = name
         self.buffer = buffer
@@ -365,6 +389,8 @@ class Agent:
         self.buffer_sample_size = buffer_sample_size
         self.R=0
         self.alpha = alpha
+        self.feasibility_classifier = feasibility_classifier
+        self.feasibility_optimizer = feasibility_optimizer
 
 
         
