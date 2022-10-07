@@ -21,7 +21,7 @@ agent1=tk.Agent("agent1",
                 gamma=0.99,
                 update_batch_size=8,
                 lr_actor=0.01,
-                lr_critic=0.01,
+                lr_critic=0.001,
                 tau=0.1
                 )
 
@@ -40,7 +40,7 @@ agent2=tk.Agent("agent2",
                 update_batch_size=8,
                 tau=0.1,
                 lr_actor=0.01,
-                lr_critic=0.01
+                lr_critic=0.001
 )
 
 agents=[agent1,agent2]
@@ -50,7 +50,6 @@ env=tk.Environment(name="Toy-NECOM",
                     extracellular_reactions=[],
                     initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
                     inlet_conditions={"S":10},
-
                     max_c={'S':100,
                            'agent1':10,  
                            'agent2':10,
@@ -121,7 +120,6 @@ for episode in range(1000):
     env.reset()
 
     for agent in env.agents:
-        agent.epsilon=0.01+0.5*np.exp(-episode/50)
         agent.rewards=[]
     C=[]
     for ep in range(1000):
@@ -141,14 +139,15 @@ for episode in range(1000):
             policy_loss.backward()
             ag.optimizer_policy_.step()
         C.append(env.state.copy()) 
-    
+
+    pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
+
     for agent in env.agents:
         print(episode)
         print(np.sum(agent.rewards))    
     
-    time.sleep(5)
     
-    pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
+
 
 
 

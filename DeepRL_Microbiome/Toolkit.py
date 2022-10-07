@@ -9,6 +9,27 @@ from collections import deque,namedtuple
 import ray
 
 cross_entropy_loss=nn.CrossEntropyLoss()
+
+
+def feasibl_sampler(actor_net,feasiblity_net,state):
+    """
+    This function will sample a feasible action from the actor network given a state.
+    """
+    with torch.no_grad():
+        # feas_prob=0
+        # counter=0
+        # while random.random()>feas_prob or counter<100:
+        #     action=actor_net(state).detach()
+        #     action+=torch.normal(torch.zeros(action.shape),torch.ones(action.shape))
+        #     feas_prob=nn.Softmax(dim=1)(feasiblity_net(torch.cat([state,action],dim=1))).detach().numpy()[0][0]
+        #     counter+=1
+
+        
+        action=actor_net(state).detach()
+        action+=torch.normal(torch.zeros(action.shape),torch.ones(action.shape))
+
+    return action.detach().numpy()[0]
+
 class Memory:
     def __init__(self, max_size):
         self.buffer = deque(maxlen=max_size)
@@ -50,7 +71,7 @@ class Feasibility_Classifier(nn.Module):
         nn.Linear(hidden_size, hidden_size),nn.ReLU(),
         nn.Linear(hidden_size, hidden_size),nn.ReLU(),
         nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
         nn.Linear(hidden_size, output_size))
         
 
@@ -66,7 +87,7 @@ class DDPGActor(nn.Module):
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30, act_size))
+            nn.Linear(30, act_size),nn.Hardtanh(min_val=-10,max_val=10))
 
     def forward(self, x):
        return self.net(x)
@@ -76,22 +97,21 @@ class DDPGCritic(nn.Module):
     def __init__(self, obs_size, act_size):
 
         super(DDPGCritic, self).__init__()
-        self.obs_net = nn.Sequential(
-            nn.Linear(obs_size, 30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),            
-            nn.Linear(30,30),nn.Tanh(),            
-            nn.Linear(30,30),nn.Tanh(),            
-            nn.Linear(30,30),nn.Tanh(),            
-            nn.Linear(30,30),nn.Tanh(),            
-            nn.Linear(30,30),nn.Tanh(),            
-            nn.Linear(30,30),nn.Tanh(),            
-            nn.Linear(30,20),
-            
-            )
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(20 + act_size, 30),nn.Tanh(),
+                       nn.Linear(obs_size + act_size, 30),nn.Tanh(),
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
@@ -101,8 +121,8 @@ class DDPGCritic(nn.Module):
                        )
     
     def forward(self, x, a):
-        obs = self.obs_net(x)           
-        return self.out_net(torch.cat([obs, a],dim=1))
+                 
+        return self.out_net(torch.cat([x, a],dim=1)) 
 
 
 
@@ -187,15 +207,15 @@ class Environment:
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=M.actor_network_(torch.FloatTensor([self.state[M.observables]])).detach().numpy()[0]
-            if random.random()<M.epsilon:
-                # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
-                M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
-                # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
+            M.a=feasibl_sampler(M.actor_network_,M.feasibility_network_,torch.FloatTensor([self.state[M.observables]]))
+            # if random.random()<M.epsilon:
+            #     # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
+            #     M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
+            #     # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
 
-            else:
+            # else:
 
-                pass
+            #     pass
             
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
@@ -212,13 +232,15 @@ class Environment:
 
                 else:
                     M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],M.model.reactions[M.actions[index]].upper_bound)
+                
+                M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
 
-                M.a[index]=M.model.reactions[M.actions[index]].lower_bound
+
 
             Sols[i] = self.agents[i].model.optimize()
             self.agents[i].feasibility_optimizer_.zero_grad()
             if Sols[i].status == 'infeasible':
-                self.agents[i].reward= 0
+                self.agents[i].reward= -10
                 dCdt[i] = 0
                 pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
@@ -229,9 +251,7 @@ class Environment:
                 pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
             l.backward()
-
             self.agents[i].feasibility_optimizer_.step()
-            print(l)
         # Handling the exchange reaction balances in the community
 
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
@@ -272,16 +292,17 @@ class Environment:
             
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=100
+                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=10
                     M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(C[index+len(self.agents)])    
             
             for index,flux in enumerate(M.actions): 
                 if M.a[index]<0:
                 
-                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],M.model.reactions[M.actions[index]].lower_bound)
+                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],-10)
                     # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound    
                 else:
-                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],M.model.reactions[M.actions[index]].upper_bound) 
+                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
+
                 M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
             Sols[i] = self.agents[i].model.optimize()
             if Sols[i].status == 'infeasible':
