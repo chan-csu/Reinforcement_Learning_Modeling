@@ -26,9 +26,10 @@ def feasibl_sampler(actor_net,feasiblity_net,state):
 
         
         action=actor_net(state).detach()
-        action+=torch.normal(torch.zeros(action.shape),torch.ones(action.shape))
+        if random.random()<1:
+            action+=torch.normal(torch.zeros(action.shape),torch.ones(action.shape)*5)
 
-    return action.detach().numpy()[0]
+    return action.detach().numpy()
 
 class Memory:
     def __init__(self, max_size):
@@ -66,12 +67,12 @@ class Feasibility_Classifier(nn.Module):
     def __init__(self,num_states,num_action, hidden_size,output_size=2):
         super(Feasibility_Classifier, self).__init__()
         self.net =nn.Sequential(nn.Linear(num_states+num_action, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
+        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
+        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
+        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
+        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
+        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
         nn.Linear(hidden_size, output_size))
         
 
@@ -100,15 +101,7 @@ class DDPGCritic(nn.Module):
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(obs_size + act_size, 30),nn.Tanh(),
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(obs_size + act_size, 30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
                        nn.Linear(30,30),nn.Tanh(), 
@@ -122,7 +115,7 @@ class DDPGCritic(nn.Module):
     
     def forward(self, x, a):
                  
-        return self.out_net(torch.cat([x, a],dim=1)) 
+        return self.out_net(torch.cat([x, a],dim=0)) 
 
 
 
@@ -207,7 +200,7 @@ class Environment:
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=feasibl_sampler(M.actor_network_,M.feasibility_network_,torch.FloatTensor([self.state[M.observables]]))
+            M.a=feasibl_sampler(M.actor_network_,M.feasibility_network_,torch.FloatTensor(np.hstack([self.state[M.observables],self.t])))
             # if random.random()<M.epsilon:
             #     # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
             #     M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
@@ -238,20 +231,20 @@ class Environment:
 
 
             Sols[i] = self.agents[i].model.optimize()
-            self.agents[i].feasibility_optimizer_.zero_grad()
+            # self.agents[i].feasibility_optimizer_.zero_grad()
             if Sols[i].status == 'infeasible':
-                self.agents[i].reward= -10
+                self.agents[i].reward=-1
                 dCdt[i] = 0
-                pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
-                l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
+                # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
+                # l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
             
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
                 self.agents[i].reward =Sols[i].objective_value*self.state[i]
-                pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
-                l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
-            l.backward()
-            self.agents[i].feasibility_optimizer_.step()
+                # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
+                # l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
+            # l.backward()
+            # self.agents[i].feasibility_optimizer_.step()
         # Handling the exchange reaction balances in the community
 
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
@@ -303,10 +296,10 @@ class Environment:
                 else:
                     M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
 
-                M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
+                # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
             Sols[i] = self.agents[i].model.optimize()
             if Sols[i].status == 'infeasible':
-                self.agents[i].reward= -10
+                self.agents[i].reward= 0
                 dCdt[i] = 0
             else:
                 dCdt[i] += Sols[i].objective_value*C[i]
@@ -357,13 +350,13 @@ class Environment:
     def set_networks(self):
         """ Sets the networks for the agents in the environment."""
         for agent in self.agents:
-            agent.actor_network_=agent.actor_network(len(agent.observables),len(agent.actions))
-            agent.critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
-            agent.target_actor_network_=agent.actor_network(len(agent.observables),len(agent.actions))
-            agent.target_critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
+            agent.actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
+            agent.critic_network_=agent.critic_network(len(agent.observables)+1,len(agent.actions))
+            agent.target_actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
+            agent.target_critic_network_=agent.critic_network(len(agent.observables)+1,len(agent.actions))
             agent.optimizer_value_ = agent.optimizer_value(agent.critic_network_.parameters(), lr=agent.lr_critic)
             agent.optimizer_policy_ = agent.optimizer_policy(agent.actor_network_.parameters(), lr=agent.lr_actor)
-            agent.feasibility_network_=agent.feasibility_classifier(len(agent.observables),len(agent.actions),50)
+            agent.feasibility_network_=agent.feasibility_classifier(len(agent.observables)+1,len(agent.actions),50)
             agent.feasibility_optimizer_=agent.feasibility_optimizer(agent.feasibility_network_.parameters(),lr=0.001)
 
 class Agent:

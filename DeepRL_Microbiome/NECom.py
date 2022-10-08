@@ -20,7 +20,7 @@ agent1=tk.Agent("agent1",
                 actions=['EX_A_sp1','EX_B_sp1'],
                 gamma=0.99,
                 update_batch_size=8,
-                lr_actor=0.01,
+                lr_actor=0.001,
                 lr_critic=0.001,
                 tau=0.1
                 )
@@ -29,8 +29,8 @@ agent2=tk.Agent("agent2",
                 model=tm.Toy_Model_NE_2,
                 actor_network=tk.DDPGActor,
                 critic_network=tk.DDPGCritic,
-                optimizer_policy=torch.optim.Adam,
-                optimizer_value=torch.optim.Adam,
+                optimizer_policy=torch.optim.SGD,
+                optimizer_value=torch.optim.SGD,
                 feasibility_classifier=tk.Feasibility_Classifier,
                 feasibility_optimizer=torch.optim.Adam,
                 observables=['agent1','agent2','S',"A","B"],
@@ -39,7 +39,7 @@ agent2=tk.Agent("agent2",
                 gamma=0.99,
                 update_batch_size=8,
                 tau=0.1,
-                lr_actor=0.01,
+                lr_actor=0.001,
                 lr_critic=0.001
 )
 
@@ -54,7 +54,8 @@ env=tk.Environment(name="Toy-NECOM",
                            'agent1':10,  
                            'agent2':10,
                            'A':10,
-                           'B':10,})
+                           'B':10,},
+                           dt=0.1)
 # env.reset()
 # for epoch in range(1000):
 #     Batch=env.batch_step(env.generate_random_c(8))
@@ -122,20 +123,29 @@ for episode in range(1000):
     for agent in env.agents:
         agent.rewards=[]
     C=[]
-    for ep in range(1000):
+    episode_len=1000
+    for ep in range(episode_len):
+        env.t=episode_len-ep
         s,r,a,sp=env.step()
+        
         for ind,ag in enumerate(env.agents):
             ag.rewards.append(r[ind])
             ag.optimizer_value_.zero_grad()
-            Qvals = ag.critic_network_(torch.FloatTensor([s[ag.observables]]), torch.FloatTensor([a[ind]]))
-            next_actions = ag.actor_network_(torch.FloatTensor([sp[ag.observables]]))
-            next_Q = ag.critic_network_.forward(torch.FloatTensor([sp[ag.observables]]), next_actions.detach())
-            Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))*ag.gamma + next_Q
+            Qvals = ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
+            next_actions = ag.actor_network_(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])))
+            if env.t==1:
+                next_Q = torch.FloatTensor([0])
+            else:
+                next_Q = ag.critic_network_.forward(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])), next_actions.detach())
+
+            
+            
+            Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))+ag.gamma*next_Q
             critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
             critic_loss.backward()
             ag.optimizer_value_.step()
             ag.optimizer_policy_.zero_grad()
-            policy_loss = -ag.critic_network_(torch.FloatTensor([s[ag.observables]]), ag.actor_network_(torch.FloatTensor([s[ag.observables]]))).mean()
+            policy_loss = -ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), ag.actor_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])))).mean()
             policy_loss.backward()
             ag.optimizer_policy_.step()
         C.append(env.state.copy()) 
@@ -155,7 +165,7 @@ for episode in range(1000):
 
 
 
-# for episode in range(1000):
+# for episode in range(10000):
 #     env.reset()
 
 #     for agent in env.agents:
@@ -167,9 +177,9 @@ for episode in range(1000):
 #         for ind,ag in enumerate(env.agents):
 #             ag.rewards.append(r[ind])
 #             ag.optimizer_value_.zero_grad()
-#             Qvals = ag.critic_network_(torch.FloatTensor([s[ag.observables]]), torch.FloatTensor([a[ind]]))
-#             next_actions = ag.actor_network_(torch.FloatTensor([sp[ag.observables]]))
-#             next_Q = ag.critic_network_.forward(torch.FloatTensor([sp[ag.observables]]), next_actions.detach())
+#             Qvals = ag.critic_network_(torch.FloatTensor(s[ag.observables]), torch.FloatTensor(a[ind]))
+#             next_actions = ag.actor_network_(torch.FloatTensor(sp[ag.observables]))
+#             next_Q = ag.critic_network_.forward(torch.FloatTensor(sp[ag.observables]), next_actions.detach())
 #             Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0)) + next_Q
 #             td_error=r[ind]-ag.R-Qvals.detach()+Qprime.detach()
 #             ag.R=ag.R+ag.alpha*td_error.detach()
@@ -177,7 +187,7 @@ for episode in range(1000):
 #             critic_loss.backward()
 #             ag.optimizer_value_.step()
 #             ag.optimizer_policy_.zero_grad()
-#             policy_loss = -ag.critic_network_(torch.FloatTensor([s[ag.observables]]), ag.actor_network_(torch.FloatTensor([s[ag.observables]]))).mean()
+#             policy_loss = -ag.critic_network_(torch.FloatTensor(s[ag.observables]), ag.actor_network_(torch.FloatTensor(s[ag.observables]))).mean()
 #             policy_loss.backward()
 #             ag.optimizer_policy_.step()
 #         C.append(env.state.copy()) 
