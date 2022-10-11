@@ -11,7 +11,7 @@ import ray
 cross_entropy_loss=nn.CrossEntropyLoss()
 
 
-def feasibl_sampler(actor_net,feasiblity_net,state):
+def feasibl_sampler(actor_net,state):
     """
     This function will sample a feasible action from the actor network given a state.
     """
@@ -27,7 +27,7 @@ def feasibl_sampler(actor_net,feasiblity_net,state):
         
         action=actor_net(state).detach()
         if random.random()<1:
-            action+=torch.normal(torch.zeros(action.shape),torch.ones(action.shape)*5)
+            action+=torch.normal(torch.zeros(action.shape),torch.ones(action.shape))
 
     return action.detach().numpy()
 
@@ -78,6 +78,22 @@ class Feasibility_Classifier(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+class Reward(nn.Module):
+    def __init__(self,num_states,num_action, hidden_size,output_size=1):
+        super(Reward, self).__init__()
+        self.net =nn.Sequential(nn.Linear(num_states+num_action, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
+        nn.Linear(hidden_size, output_size))
+        
+
+    def forward(self, x,a):
+        return self.net(torch.cat([x,a],dim=0))
     
 class DDPGActor(nn.Module):
 
@@ -88,7 +104,7 @@ class DDPGActor(nn.Module):
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30, act_size),nn.Hardtanh(min_val=-10,max_val=10))
+            nn.Linear(30, act_size),nn.Hardtanh(min_val=-20,max_val=30))
 
     def forward(self, x):
        return self.net(x)
@@ -196,11 +212,11 @@ class Environment:
     
     def step(self):
         """ Performs a single step in the environment."""
-        
+        self.state[self.state<0]=0
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=feasibl_sampler(M.actor_network_,M.feasibility_network_,torch.FloatTensor(np.hstack([self.state[M.observables],self.t])))
+            M.a=feasibl_sampler(M.actor_network_,torch.FloatTensor(np.hstack([self.state[M.observables],self.t])))
             # if random.random()<M.epsilon:
             #     # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
             #     M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
@@ -220,13 +236,13 @@ class Environment:
 
                 if M.a[index]<0:
                 
-                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],M.model.reactions[M.actions[index]].lower_bound)
+                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],20*M.model.reactions[M.actions[index]].lower_bound)
                     # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound
 
                 else:
-                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],M.model.reactions[M.actions[index]].upper_bound)
+                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
                 
-                M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
+                # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
 
 
 
@@ -356,8 +372,10 @@ class Environment:
             agent.target_critic_network_=agent.critic_network(len(agent.observables)+1,len(agent.actions))
             agent.optimizer_value_ = agent.optimizer_value(agent.critic_network_.parameters(), lr=agent.lr_critic)
             agent.optimizer_policy_ = agent.optimizer_policy(agent.actor_network_.parameters(), lr=agent.lr_actor)
-            agent.feasibility_network_=agent.feasibility_classifier(len(agent.observables)+1,len(agent.actions),50)
-            agent.feasibility_optimizer_=agent.feasibility_optimizer(agent.feasibility_network_.parameters(),lr=0.001)
+            agent.reward_network_=agent.reward_network(len(agent.observables)+1,len(agent.actions),30)
+            agent.optimizer_reward_ = agent.optimizer_reward(agent.reward_network_.parameters(), lr=agent.lr_reward)
+            # agent.feasibility_network_=agent.feasibility_classifier(len(agent.observables)+1,len(agent.actions),50)
+            # agent.feasibility_optimizer_=agent.feasibility_optimizer(agent.feasibility_network_.parameters(),lr=0.001)
 
 class Agent:
     """ Any microbial agent will be an instance of this class.
@@ -367,10 +385,10 @@ class Agent:
                 model:cobra.Model,
                 actor_network:DDPGActor,
                 critic_network:DDPGCritic,
+                reward_network: Reward,
                 optimizer_value:torch.optim.Adam,
                 optimizer_policy:torch.optim.Adam,
-                feasibility_classifier:Feasibility_Classifier,
-                feasibility_optimizer:torch.optim.Adam,
+                optimizer_reward:torch.optim.Adam,
                 actions:list[str],
                 observables:list[str],
                 buffer:Memory,
@@ -379,6 +397,7 @@ class Agent:
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
                 lr_critic:float=0.001,
+                lr_reward:float=0.001,
                 buffer_sample_size:int=500,
                 tau:float=0.001,
                 alpha:float=0.001) -> None:
@@ -394,7 +413,7 @@ class Agent:
         self.actions = [self.model.reactions.index(item) for item in actions]
         self.observables = observables
         self.epsilon = epsilon
-        self.general_uptake_kinetics=lambda C: 50*(C/(C+20))
+        self.general_uptake_kinetics=lambda C: 50*(C/(C+1))
         self.optimizer_value = optimizer_value
         self.optimizer_policy = optimizer_policy
         self.tau = tau
@@ -403,8 +422,9 @@ class Agent:
         self.buffer_sample_size = buffer_sample_size
         self.R=0
         self.alpha = alpha
-        self.feasibility_classifier = feasibility_classifier
-        self.feasibility_optimizer = feasibility_optimizer
+        self.reward_network = reward_network
+        self.optimizer_reward = optimizer_reward
+        self.lr_reward = lr_reward
 
 
         
