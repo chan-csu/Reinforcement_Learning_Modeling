@@ -26,8 +26,8 @@ def feasibl_sampler(actor_net,state):
 
         
         action=actor_net(state).detach()
-        if random.random()<1:
-            action+=torch.normal(torch.zeros(action.shape),torch.ones(action.shape))
+        if random.random()<0.5:
+            action+=np.random.normal(0,1,action.shape)
 
     return action.detach().numpy()
 
@@ -104,7 +104,9 @@ class DDPGActor(nn.Module):
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
             nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30, act_size),nn.Hardtanh(min_val=-20,max_val=30))
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(30, act_size),)
 
     def forward(self, x):
        return self.net(x)
@@ -117,15 +119,15 @@ class DDPGCritic(nn.Module):
 
 
         self.out_net = nn.Sequential(
-                       nn.Linear(obs_size + act_size, 30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
-                       nn.Linear(30,30),nn.Tanh(), 
+                       nn.Linear(obs_size + act_size, 30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
+                       nn.Linear(30,30),nn.ReLU(), 
                        nn.Linear(30, 1),
                        )
     
@@ -198,7 +200,8 @@ class Environment:
 
     def resolve_extracellular_reactions(self,extracellular_reactions:list[dict])->list[dict]:
         """ Determines the extracellular reactions for the community."""
-        species=[item["reaction"].keys() for item in extracellular_reactions]
+        species=[]
+        [species.extend(list(item["reaction"].keys())) for item in extracellular_reactions]
         new_species=[item for item in species if item not in self.species]
         if len(new_species)>0:
             warn("The following species are not in the community: {}".format(new_species))
@@ -236,7 +239,7 @@ class Environment:
 
                 if M.a[index]<0:
                 
-                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],20*M.model.reactions[M.actions[index]].lower_bound)
+                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],M.model.reactions[M.actions[index]].lower_bound)
                     # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound
 
                 else:
@@ -310,7 +313,7 @@ class Environment:
                     M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],-10)
                     # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound    
                 else:
-                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
+                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],20)
 
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
             Sols[i] = self.agents[i].model.optimize()
@@ -413,7 +416,7 @@ class Agent:
         self.actions = [self.model.reactions.index(item) for item in actions]
         self.observables = observables
         self.epsilon = epsilon
-        self.general_uptake_kinetics=lambda C: 50*(C/(C+1))
+        self.general_uptake_kinetics=lambda C: 20*(C/(C+20))
         self.optimizer_value = optimizer_value
         self.optimizer_policy = optimizer_policy
         self.tau = tau
