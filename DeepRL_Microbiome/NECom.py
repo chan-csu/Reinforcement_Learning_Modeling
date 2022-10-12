@@ -221,19 +221,20 @@ agents=[agent1]
 
 env=tk.Environment(name="Toy-Exoenzyme",
                     agents=agents,
+                    dilution_rate=0.01,
                     
                     initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
                     inlet_conditions={"Starch":10},
                     extracellular_reactions=[{"reaction":{
                     "Glc":10,
                     "Starch":-0.1,},
-                    "kinetics": (lambda x,y: 0.1*x*y/(10+x),("Glc","Amylase"))}]
+                    "kinetics": (lambda x,y: 0.01*x*y/(10+x),("Glc","Amylase"))}]
                     ,
                     max_c={'Glc':100,
                            'agent1':10,  
                            'Starch':10,
                            },
-                           dt=0.01)
+                           dt=0.1)
 
 
 

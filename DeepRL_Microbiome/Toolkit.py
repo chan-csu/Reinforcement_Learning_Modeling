@@ -100,12 +100,12 @@ class DDPGActor(nn.Module):
     def __init__(self, obs_size, act_size):
         super(DDPGActor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_size, 30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
-            nn.Linear(30,30),nn.Tanh(),
+            nn.Linear(obs_size, 30),nn.ReLU(),
+            nn.Linear(30,30),nn.ReLU(),
+            nn.Linear(30,30),nn.ReLU(),
+            nn.Linear(30,30),nn.ReLU(),
+            nn.Linear(30,30),nn.ReLU(),
+            nn.Linear(30,30),nn.ReLU(),
             nn.Linear(30, act_size),)
 
     def forward(self, x):
