@@ -200,7 +200,7 @@ import time
 
 
 agent1=tk.Agent("agent1",
-                model=tm.ToyModel_SA,
+                model=tm.ToyModel_SA.copy(),
                 actor_network=tk.DDPGActor,
                 critic_network=tk.DDPGCritic,
                 reward_network=tk.Reward,
