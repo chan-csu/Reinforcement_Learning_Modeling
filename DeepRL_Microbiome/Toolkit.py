@@ -1,4 +1,5 @@
 from distutils.log import warn
+from os import stat
 import cobra
 import torch
 import numpy as np
@@ -11,7 +12,7 @@ import ray
 cross_entropy_loss=nn.CrossEntropyLoss()
 
 
-def feasibl_sampler(actor_net,state):
+def feasibl_sampler(actor_net,state,episode):
     """
     This function will sample a feasible action from the actor network given a state.
     """
@@ -26,8 +27,8 @@ def feasibl_sampler(actor_net,state):
 
         
         action=actor_net(state).detach()
-        if random.random()<0.5:
-            action+=np.random.normal(0,1,action.shape)
+        if random.random()<1:
+            action+=np.random.normal(0,5*np.exp(-episode/20),action.shape)
 
     return action.detach().numpy()
 
@@ -106,7 +107,8 @@ class DDPGActor(nn.Module):
             nn.Linear(30,30),nn.ReLU(),
             nn.Linear(30,30),nn.ReLU(),
             nn.Linear(30,30),nn.ReLU(),
-            nn.Linear(30, act_size),)
+            nn.Linear(30, act_size),
+            nn.Hardtanh(-10, 10),)
 
     def forward(self, x):
        return self.net(x)
@@ -219,7 +221,7 @@ class Environment:
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=feasibl_sampler(M.actor_network_,torch.FloatTensor(np.hstack([self.state[M.observables],self.t])))
+            M.a=feasibl_sampler(M.actor_network_,torch.FloatTensor(np.hstack([self.state[M.observables],self.t])),self.episode)
             # if random.random()<M.epsilon:
             #     # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
             #     M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))

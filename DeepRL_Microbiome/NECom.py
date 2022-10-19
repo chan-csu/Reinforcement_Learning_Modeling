@@ -7,41 +7,41 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import time
-# agent1=tk.Agent("agent1",
-#                 model=tm.Toy_Model_NE_1,
-#                 actor_network=tk.DDPGActor,
-#                 critic_network=tk.DDPGCritic,
-#                 reward_network=tk.Reward,
-#                 optimizer_policy=torch.optim.Adam,
-#                 optimizer_value=torch.optim.Adam,
-#                 optimizer_reward=torch.optim.Adam,
-#                 buffer=tk.Memory(max_size=100000),
-#                 observables=['agent1','agent2','S',"A","B"],
-#                 actions=['EX_A_sp1','EX_B_sp1'],
-#                 gamma=0.99,
-#                 update_batch_size=8,
-#                 lr_actor=0.000001,
-#                 lr_critic=0.0001,
-#                 tau=0.1
-#                 )
+agent1=tk.Agent("agent1",
+                model=tm.Toy_Model_NE_1,
+                actor_network=tk.DDPGActor,
+                critic_network=tk.DDPGCritic,
+                reward_network=tk.Reward,
+                optimizer_policy=torch.optim.Adam,
+                optimizer_value=torch.optim.Adam,
+                optimizer_reward=torch.optim.Adam,
+                buffer=tk.Memory(max_size=100000),
+                observables=['agent1','agent2','S',"A","B"],
+                actions=['EX_A_sp1','EX_B_sp1'],
+                gamma=0.99,
+                update_batch_size=8,
+                lr_actor=0.000001,
+                lr_critic=0.0001,
+                tau=0.1
+                )
 
-# agent2=tk.Agent("agent2",
-#                 model=tm.Toy_Model_NE_2,
-#                 actor_network=tk.DDPGActor,
-#                 critic_network=tk.DDPGCritic,
-#                 reward_network=tk.Reward,
-#                 optimizer_policy=torch.optim.Adam,
-#                 optimizer_value=torch.optim.Adam,
-#                 optimizer_reward=torch.optim.Adam,
-#                 observables=['agent1','agent2','S',"A","B"],
-#                 actions=['EX_A_sp2','EX_B_sp2'],
-#                 buffer=tk.Memory(max_size=100000),
-#                 gamma=0.99,
-#                 update_batch_size=8,
-#                 tau=0.1,
-#                 lr_actor=0.000001,
-#                 lr_critic=0.0001
-# )
+agent2=tk.Agent("agent2",
+                model=tm.Toy_Model_NE_2,
+                actor_network=tk.DDPGActor,
+                critic_network=tk.DDPGCritic,
+                reward_network=tk.Reward,
+                optimizer_policy=torch.optim.Adam,
+                optimizer_value=torch.optim.Adam,
+                optimizer_reward=torch.optim.Adam,
+                observables=['agent1','agent2','S',"A","B"],
+                actions=['EX_A_sp2','EX_B_sp2'],
+                buffer=tk.Memory(max_size=100000),
+                gamma=0.99,
+                update_batch_size=8,
+                tau=0.1,
+                lr_actor=0.000001,
+                lr_critic=0.0001
+)
 
 # agents=[agent1,agent2]
 
@@ -121,6 +121,7 @@ import time
     
 # for episode in range(1000):
 #     env.reset()
+#     env.episode=episode
 
 #     for agent in env.agents:
 #         agent.rewards=[]
@@ -245,6 +246,7 @@ env=tk.Environment(name="Toy-Exoenzyme",
 
 for episode in range(1000):
     env.reset()
+    env.episode=episode
 
     for agent in env.agents:
         agent.rewards=[]
