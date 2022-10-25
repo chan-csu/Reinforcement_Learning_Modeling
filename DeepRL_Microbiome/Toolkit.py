@@ -1,5 +1,4 @@
 from distutils.log import warn
-from os import stat
 import cobra
 import torch
 import numpy as np
