@@ -1,4 +1,5 @@
 from mimetypes import init
+from turtle import color
 import Toolkit as tk
 import ToyModel as tm
 import torch
@@ -7,58 +8,61 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import time
-agent1=tk.Agent("agent1",
-                model=tm.Toy_Model_NE_1,
-                actor_network=tk.DDPGActor,
-                critic_network=tk.DDPGCritic,
-                reward_network=tk.Reward,
-                optimizer_policy=torch.optim.Adam,
-                optimizer_value=torch.optim.Adam,
-                optimizer_reward=torch.optim.Adam,
-                buffer=tk.Memory(max_size=100000),
-                observables=['agent1','agent2','S',"A","B"],
-                actions=['EX_A_sp1','EX_B_sp1'],
-                gamma=0.99,
-                update_batch_size=8,
-                lr_actor=0.000001,
-                lr_critic=0.001,
-                tau=0.1
-                )
+import ray
+import seaborn  as sns
+import matplotlib.pyplot as plt
+# agent1=tk.Agent("agent1",
+#                 model=tm.Toy_Model_NE_1,
+#                 actor_network=tk.DDPGActor,
+#                 critic_network=tk.DDPGCritic,
+#                 reward_network=tk.Reward,
+#                 optimizer_policy=torch.optim.Adam,
+#                 optimizer_value=torch.optim.Adam,
+#                 optimizer_reward=torch.optim.Adam,
+#                 buffer=tk.Memory(max_size=100000),
+#                 observables=['agent1','agent2','S',"A","B"],
+#                 actions=['EX_A_sp1','EX_B_sp1'],
+#                 gamma=0.99,
+#                 update_batch_size=8,
+#                 lr_actor=0.000001,
+#                 lr_critic=0.001,
+#                 tau=0.1
+#                 )
 
-agent2=tk.Agent("agent2",
-                model=tm.Toy_Model_NE_2,
-                actor_network=tk.DDPGActor,
-                critic_network=tk.DDPGCritic,
-                reward_network=tk.Reward,
-                optimizer_policy=torch.optim.Adam,
-                optimizer_value=torch.optim.Adam,
-                optimizer_reward=torch.optim.Adam,
-                observables=['agent1','agent2','S',"A","B"],
-                actions=['EX_A_sp2','EX_B_sp2'],
-                buffer=tk.Memory(max_size=100000),
-                gamma=0.99,
-                update_batch_size=8,
-                tau=0.1,
-                lr_actor=0.000001,
-                lr_critic=0.001
-)
+# agent2=tk.Agent("agent2",
+#                 model=tm.Toy_Model_NE_2,
+#                 actor_network=tk.DDPGActor,
+#                 critic_network=tk.DDPGCritic,
+#                 reward_network=tk.Reward,
+#                 optimizer_policy=torch.optim.Adam,
+#                 optimizer_value=torch.optim.Adam,
+#                 optimizer_reward=torch.optim.Adam,
+#                 observables=['agent1','agent2','S',"A","B"],
+#                 actions=['EX_A_sp2','EX_B_sp2'],
+#                 buffer=tk.Memory(max_size=100000),
+#                 gamma=0.99,
+#                 update_batch_size=8,
+#                 tau=0.1,
+#                 lr_actor=0.000001,
+#                 lr_critic=0.001
+# )
 
-agents=[agent1,agent2]
+# agents=[agent1,agent2]
 
-env=tk.Environment(name="Toy-NECOM",
-                    agents=agents,
-                    extracellular_reactions=[],
-                    initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
-                    inlet_conditions={"S":100},
-                    max_c={'S':100,
-                           'agent1':10,  
-                           'agent2':10,
-                           'A':10,
-                           'B':10,},
-                           dt=0.05,dilution_rate=0.01)
+# env=tk.Environment(name="Toy-NECOM",
+#                     agents=agents,
+#                     extracellular_reactions=[],
+#                     initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
+#                     inlet_conditions={"S":100},
+#                     max_c={'S':100,
+#                            'agent1':10,  
+#                            'agent2':10,
+#                            'A':10,
+#                            'B':10,},
+#                            dt=0.05,dilution_rate=0.01)
 
 
-env.reset()
+
 # for epoch in range(1000):
 #     Batch=env.batch_step(env.generate_random_c(8))
 #     for i in Batch:
@@ -244,51 +248,127 @@ env.reset()
 
 
 
-for episode in range(1000):
-    env.reset()
-    env.episode=episode
+# for episode in range(1000):
+#     env.reset()
+#     env.episode=episode
 
-    for agent in env.agents:
-        agent.rewards=[]
-    C=[]
-    episode_len=1000
-    for ep in range(episode_len):
-        env.t=episode_len-ep
-        s,r,a,sp=env.step()
+#     for agent in env.agents:
+#         agent.rewards=[]
+#     C=[]
+#     episode_len=1000
+#     for ep in range(episode_len):
+#         env.t=episode_len-ep
+#         s,r,a,sp=env.step()
         
         
-        for ind,ag in enumerate(env.agents):
-            ag.rewards.append(r[ind])
-            # ag.optimizer_reward_.zero_grad()
-            # # r_pred=ag.reward_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
-            # # r_loss=nn.MSELoss()(r_pred,torch.FloatTensor(np.expand_dims(np.array(r[ind]),0)))
-            # # r_loss.backward()
-            # ag.optimizer_reward_.step()
-            ag.optimizer_value_.zero_grad()
-            Qvals = ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
-            next_actions = ag.actor_network_(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])))
-            if env.t==1:
-                next_Q = torch.FloatTensor([0])
-            else:
-                next_Q = ag.critic_network_.forward(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])), next_actions.detach())
-            Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))+ag.gamma*next_Q
-            critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
-            critic_loss.backward()
-            ag.optimizer_value_.step()
-            ag.optimizer_policy_.zero_grad()
-            policy_loss = -ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), ag.actor_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])))).mean()
-            policy_loss.backward()
-            ag.optimizer_policy_.step()
-        C.append(env.state.copy()) 
+#         for ind,ag in enumerate(env.agents):
+#             ag.rewards.append(r[ind])
+#             # ag.optimizer_reward_.zero_grad()
+#             # # r_pred=ag.reward_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
+#             # # r_loss=nn.MSELoss()(r_pred,torch.FloatTensor(np.expand_dims(np.array(r[ind]),0)))
+#             # # r_loss.backward()
+#             # ag.optimizer_reward_.step()
+#             ag.optimizer_value_.zero_grad()
+#             Qvals = ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
+#             next_actions = ag.actor_network_(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])))
+#             if env.t==1:
+#                 next_Q = torch.FloatTensor([0])
+#             else:
+#                 next_Q = ag.critic_network_.forward(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])), next_actions.detach())
+#             Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))+ag.gamma*next_Q
+#             critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
+#             critic_loss.backward()
+#             ag.optimizer_value_.step()
+#             ag.optimizer_policy_.zero_grad()
+#             policy_loss = -ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), ag.actor_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])))).mean()
+#             policy_loss.backward()
+#             ag.optimizer_policy_.step()
+#         C.append(env.state.copy()) 
 
-    pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
+#     pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
 
-    for agent in env.agents:
-        print(episode)
-        print(np.sum(agent.rewards))    
+#     for agent in env.agents:
+#         print(episode)
+#         print(np.sum(agent.rewards))    
+all_results=[]
+number_of_simulations=16
+for batch in range(number_of_simulations):
+    agent1=tk.Agent("agent1",
+                model=tm.Toy_Model_NE_1,
+                actor_network=tk.DDPGActor,
+                critic_network=tk.DDPGCritic,
+                reward_network=tk.Reward,
+                optimizer_policy=torch.optim.Adam,
+                optimizer_value=torch.optim.Adam,
+                optimizer_reward=torch.optim.Adam,
+                buffer=tk.Memory(max_size=100000),
+                observables=['agent1','agent2','S',"A","B"],
+                actions=['EX_A_sp1','EX_B_sp1'],
+                gamma=0.99,
+                update_batch_size=8,
+                lr_actor=0.0000001,
+                lr_critic=0.001,
+                tau=0.1
+                )
+
+    agent2=tk.Agent("agent2",
+                model=tm.Toy_Model_NE_2,
+                actor_network=tk.DDPGActor,
+                critic_network=tk.DDPGCritic,
+                reward_network=tk.Reward,
+                optimizer_policy=torch.optim.Adam,
+                optimizer_value=torch.optim.Adam,
+                optimizer_reward=torch.optim.Adam,
+                observables=['agent1','agent2','S',"A","B"],
+                actions=['EX_A_sp2','EX_B_sp2'],
+                buffer=tk.Memory(max_size=100000),
+                gamma=0.99,
+                update_batch_size=8,
+                tau=0.1,
+                lr_actor=0.0000001,
+                lr_critic=0.001
+            )
+
+    agents=[agent1,agent2]
+
+    env=tk.Environment(name="Toy-NECOM",
+                    agents=agents,
+                    extracellular_reactions=[],
+                    initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
+                    inlet_conditions={"S":100},
+                    max_c={'S':100,
+                           'agent1':10,  
+                           'agent2':10,
+                           'A':10,
+                           'B':10,},
+                           dt=0.05,dilution_rate=0.01)
+
+                
+    all_results.append(tk.simulate.remote(env,200,1000))
+all_results= ray.get(all_results)
+total_rew={"Reward":[],"Agent":[],"Step":[]}
+total_rec={"Action":[],"Replicate":[],"Step":[]}
+for i in range(len(all_results)):
+    rew,rec=all_results[i]
+    for j in range(len(rew)):
+        total_rew["Reward"].extend(rew[j])
+        total_rew["Agent"].extend([j+1]*len(rew[j]))
+        total_rew["Step"].extend(range(len(rew[j])))
     
-    
+    total_rec["Action"].extend(rec)
+    total_rec["Replicate"].extend([i+1]*len(rec))
+    total_rec["Step"].extend(range(len(rec)))
 
-
-
-
+col_names=env.species.copy()
+for i in range(len(env.agents)):
+    col_names.extend([env.agents[i].model.reactions[j].id for j in env.agents[i].actions])
+col_names.extend(["Replicate","Step"])
+reward_data=pd.DataFrame(total_rew)
+record_data=pd.DataFrame(np.hstack([np.array(total_rec["Action"]),np.expand_dims(np.array(total_rec["Replicate"]),axis=1),np.expand_dims(np.array(total_rec["Step"]),axis=1)]),columns=col_names)
+record_data=pd.melt(record_data,value_vars=record_data.columns[:-2],id_vars=["Step","Replicate"])
+sns_plot=sns.lineplot(data=reward_data,x="Step",y="Reward",hue="Agent",palette="deep")
+record_data.to_csv("record_data.csv")
+reward_data.to_csv("reward_data.csv")
+# sns.lineplot(data=record_data,x="Step",y="value",palette="deep",hue="variable")
+plt.savefig("Reward.png")
+plt.show()

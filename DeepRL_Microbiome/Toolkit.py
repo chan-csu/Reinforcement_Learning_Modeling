@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from collections import deque,namedtuple
 import ray
+import pandas as pd
 
 cross_entropy_loss=nn.CrossEntropyLoss()
 
@@ -216,6 +217,7 @@ class Environment:
     
     def step(self):
         """ Performs a single step in the environment."""
+        self.temp_actions=[]
         self.state[self.state<0]=0
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
@@ -266,7 +268,7 @@ class Environment:
             # l.backward()
             # self.agents[i].feasibility_optimizer_.step()
         # Handling the exchange reaction balances in the community
-
+        self.temp_actions=[[Sols[j].fluxes.iloc[i] for i in self.agents[i].actions] for j in range(len(self.agents))]
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
         
             for j in range(len(self.agents)):
@@ -324,6 +326,7 @@ class Environment:
             else:
                 dCdt[i] += Sols[i].objective_value*C[i]
                 self.agents[i].reward =Sols[i].objective_value
+            
 
         # Handling the exchange reaction balances in the community  
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
@@ -381,6 +384,7 @@ class Environment:
             # agent.feasibility_network_=agent.feasibility_classifier(len(agent.observables)+1,len(agent.actions),50)
             # agent.feasibility_optimizer_=agent.feasibility_optimizer(agent.feasibility_network_.parameters(),lr=0.001)
 
+    
 class Agent:
     """ Any microbial agent will be an instance of this class.
     """
@@ -464,4 +468,54 @@ def Build_Mapping_Matrix(Models:list[cobra.Model])->dict:
             else:
                 Mapping_Matrix[i, j] = -1
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
+@ray.remote
+def simulate(env,episodes=200,steps=1000):
+    """ Simulates the environment for a given number of episodes and steps."""
+    env.rewards=np.zeros((len(env.agents),episodes))
+    env.record=[]
+    for episode in range(episodes):
+        env.reset()
+        env.episode=episode
 
+        for agent in env.agents:
+            agent.rewards=[]
+        C=[]
+        episode_len=steps
+        for ep in range(episode_len):
+            env.t=episode_len-ep
+            s,r,a,sp=env.step()
+
+
+            for ind,ag in enumerate(env.agents):
+                ag.rewards.append(r[ind])
+                # ag.optimizer_reward_.zero_grad()
+                # # r_pred=ag.reward_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
+                # # r_loss=nn.MSELoss()(r_pred,torch.FloatTensor(np.expand_dims(np.array(r[ind]),0)))
+                # # r_loss.backward()
+                # ag.optimizer_reward_.step()
+                ag.optimizer_value_.zero_grad()
+                Qvals = ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
+                next_actions = ag.actor_network_(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])))
+                if env.t==1:
+                    next_Q = torch.FloatTensor([0])
+                else:
+                    next_Q = ag.critic_network_.forward(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])), next_actions.detach())
+                Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))+ag.gamma*next_Q
+                critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
+                critic_loss.backward()
+                ag.optimizer_value_.step()
+                ag.optimizer_policy_.zero_grad()
+                policy_loss = -ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), ag.actor_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])))).mean()
+                policy_loss.backward()
+                ag.optimizer_policy_.step()
+            C.append(env.state.copy())
+            env.record.append(np.hstack([env.state.copy(),np.reshape(np.array(env.temp_actions),(-1))]))
+
+        # pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
+
+        for ag_ind,agent in enumerate(env.agents):
+            print(episode)
+            print(np.sum(agent.rewards))
+            env.rewards[ag_ind,episode]=np.sum(agent.rewards)
+    return env.rewards.copy(),env.record.copy()
+        
