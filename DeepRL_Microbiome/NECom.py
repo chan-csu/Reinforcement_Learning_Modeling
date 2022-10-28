@@ -294,7 +294,7 @@ all_results=[]
 number_of_simulations=16
 for batch in range(number_of_simulations):
     agent1=tk.Agent("agent1",
-                model=tm.Toy_Model_NE_1,
+                model=tm.ToyModel_SA.copy(),
                 actor_network=tk.DDPGActor,
                 critic_network=tk.DDPGCritic,
                 reward_network=tk.Reward,
@@ -302,46 +302,33 @@ for batch in range(number_of_simulations):
                 optimizer_value=torch.optim.Adam,
                 optimizer_reward=torch.optim.Adam,
                 buffer=tk.Memory(max_size=100000),
-                observables=['agent1','agent2','S',"A","B"],
-                actions=['EX_A_sp1','EX_B_sp1'],
+                observables=['agent1', 'Glc', 'Starch'],
+                actions=["Amylase_Ex"],
                 gamma=0.99,
                 update_batch_size=8,
-                lr_actor=0.0000001,
-                lr_critic=0.001,
+                lr_actor=0.00001,
+                lr_critic=0.0001,
                 tau=0.1
                 )
 
-    agent2=tk.Agent("agent2",
-                model=tm.Toy_Model_NE_2,
-                actor_network=tk.DDPGActor,
-                critic_network=tk.DDPGCritic,
-                reward_network=tk.Reward,
-                optimizer_policy=torch.optim.Adam,
-                optimizer_value=torch.optim.Adam,
-                optimizer_reward=torch.optim.Adam,
-                observables=['agent1','agent2','S',"A","B"],
-                actions=['EX_A_sp2','EX_B_sp2'],
-                buffer=tk.Memory(max_size=100000),
-                gamma=0.99,
-                update_batch_size=8,
-                tau=0.1,
-                lr_actor=0.0000001,
-                lr_critic=0.001
-            )
+    agents=[agent1]
 
-    agents=[agent1,agent2]
-
-    env=tk.Environment(name="Toy-NECOM",
+    env=tk.Environment(name="Toy-Exoenzyme",
                     agents=agents,
-                    extracellular_reactions=[],
-                    initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
-                    inlet_conditions={"S":100},
-                    max_c={'S':100,
+                    dilution_rate=0.01,
+                    
+                    initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
+                    inlet_conditions={"Starch":10},
+                    extracellular_reactions=[{"reaction":{
+                    "Glc":10,
+                    "Starch":-0.1,},
+                    "kinetics": (lambda x,y: 0.01*x*y/(10+x),("Glc","Amylase"))}]
+                    ,
+                    max_c={'Glc':100,
                            'agent1':10,  
-                           'agent2':10,
-                           'A':10,
-                           'B':10,},
-                           dt=0.05,dilution_rate=0.01)
+                           'Starch':10,
+                           },
+                           dt=0.1)
 
                 
     all_results.append(tk.simulate.remote(env,200,1000))
