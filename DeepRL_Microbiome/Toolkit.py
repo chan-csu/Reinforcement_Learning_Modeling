@@ -6,6 +6,8 @@ import random
 import torch
 import torch.nn as nn
 from collections import deque,namedtuple
+from torch.distributions import MultivariateNormal
+
 import ray
 import pandas as pd
 
@@ -23,72 +25,25 @@ class NN(nn.Module):
     def forward(self, obs):
         return self.nn(obs)
 
+def rollout(self):
+  # Batch data
+    batch_obs = {}             # batch observations
+    batch_acts = {}            # batch actions
+    batch_log_probs = {}      # log probs of each action
+    batch_rews = {}           # batch rewards
+    batch_rtgs = {}            # batch rewards-to-go
+    batch_lens = {}            # episodic lengths in batch
         
 
 
-class Memory:
-    def __init__(self, max_size):
-        self.buffer = deque(maxlen=max_size)
-    
-    def push(self, state,reward, action, next_state):
-        experience = (state, np.array(reward), action, next_state)
-        self.buffer.appendleft(experience)
 
-    def sample(self, batch_size):
-        state_batch = []
-        action_batch = []
-        reward_batch = []
-        next_state_batch = []
+
+
+
+
+
+
         
-
-        batch = random.sample(self.buffer, batch_size)
-
-        for experience in batch:
-            state,reward , action, next_state = experience
-            state_batch.append(state)
-            action_batch.append(action)
-            reward_batch.append(reward)
-            next_state_batch.append(next_state)
-            
-        
-        return state_batch,reward_batch, action_batch,next_state_batch
-
-    def __len__(self):
-        return len(self.buffer)
-
-
-
-class Feasibility_Classifier(nn.Module):
-    def __init__(self,num_states,num_action, hidden_size,output_size=2):
-        super(Feasibility_Classifier, self).__init__()
-        self.net =nn.Sequential(nn.Linear(num_states+num_action, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
-        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
-        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
-        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
-        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
-        nn.Linear(hidden_size, hidden_size),nn.Tanh(),
-        nn.Linear(hidden_size, output_size))
-        
-
-    def forward(self, x):
-        return self.net(x)
-
-class Reward(nn.Module):
-    def __init__(self,num_states,num_action, hidden_size,output_size=1):
-        super(Reward, self).__init__()
-        self.net =nn.Sequential(nn.Linear(num_states+num_action, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, hidden_size),nn.ReLU(),
-        nn.Linear(hidden_size, output_size))
-        
-
-    def forward(self, x,a):
-        return self.net(torch.cat([x,a],dim=0))
     
 class DDPGActor(nn.Module):
 
@@ -193,7 +148,6 @@ class Environment:
         new_species=[item for item in species if item not in self.species]
         if len(new_species)>0:
             warn("The following species are not in the community: {}".format(new_species))
-            print("Adding the following species to the community: {}".format(new_species))
             self.species.extend(new_species)
     
     
@@ -208,16 +162,6 @@ class Environment:
         dCdt = np.zeros(self.state.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=feasibl_sampler(M.actor_network_,torch.FloatTensor(np.hstack([self.state[M.observables],self.t])),self.episode)
-            # if random.random()<M.epsilon:
-            #     # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
-            #     M.a+=np.random.normal(loc=0,scale=1,size=len(M.actions))
-            #     # M.a=np.random.uniform(low=-10, high=10,size=len(M.actions))
-
-            # else:
-
-            #     pass
-            
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
                     M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=100
@@ -273,10 +217,10 @@ class Environment:
             for metabolite in ex_reaction["reaction"].keys():
                 dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
         dCdt+=self.dilution_rate*(self.inlet_conditions-self.state)
-        C=self.state.copy()
+        # C=self.state.copy()
         self.state += dCdt*self.dt
         Cp=self.state.copy()
-        return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
+        return Cp,list(i.reward for i in self.agents),list(i.a for i in self.agents)
 
 
     @ray.remote
@@ -285,11 +229,6 @@ class Environment:
         dCdt = np.zeros(C.shape)
         Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
-            M.a=M.actor_network_(torch.FloatTensor([C[M.observables]])).detach().numpy()[0]
-            if random.random()<M.epsilon:
-                M.a+=np.random.uniform(low=-1, high=1,size=len(M.actions))  
-            else:   
-                pass
             
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
@@ -376,7 +315,6 @@ class Agent:
                 optimizer_actor:torch.optim.Adam,
                 actions:list[str],
                 observables:list[str],
-                buffer:Memory,
                 gamma:float,
                 update_batch_size:int,
                 epsilon:float=0.01,
@@ -387,7 +325,6 @@ class Agent:
                 alpha:float=0.001) -> None:
 
         self.name = name
-        self.buffer = buffer
         self.model = model
         self.optimizer_critic = optimizer_critic
         self.optimizer_actor = optimizer_actor
@@ -406,7 +343,25 @@ class Agent:
         self.alpha = alpha
         self.actor_network = actor_network
         self.critic_network = critic_network
-
+        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.5)
+        self.cov_mat = torch.diag(self.cov_var)
+   
+    def get_actions(self,observation:np.ndarray):
+        """ 
+        Gets the actions and their probabilities for the agent.
+        """
+        mean = self.actor_network_(torch.tensor(observation, dtype=torch.float32)).detach().numpy()
+        dist = MultivariateNormal(mean, self.cov_mat)
+        action = dist.sample()
+        log_prob = dist.log_prob(action)
+        return action.detach().numpy(), log_prob.detach()
+   
+    def evaluate(self, batch_obs,batch_acts):
+        V = self.critic(batch_obs).squeeze()
+        mean = self.actor(batch_obs)
+        dist = MultivariateNormal(mean, self.cov_mat)
+        log_probs = dist.log_prob(batch_acts)
+        return V, log_probs 
 
 
 
@@ -493,4 +448,33 @@ def simulate(env,episodes=200,steps=1000):
             print(np.sum(agent.rewards))
             env.rewards[ag_ind,episode]=np.sum(agent.rewards)
     return env.rewards.copy(),env.record.copy()
-        
+def rollout(env):
+    batch_obs = {key.name:[] for key in env.agents}
+    batch_acts = {key.name:[] for key in env.agents}
+    batch_log_probs = {key.name:[] for key in env.agents}
+    batch_rews = {key.name:[] for key in env.agents}
+    batch_rtgs = {key.name:[] for key in env.agents}
+    ep_rews = {key.name:[] for key in env.agents}
+    obs=env.state.copy()
+    for step in range(env.batch_iter):
+        env.t=env.batch_per_episode-(env.batch_number*env.batch_iter+step)
+        for agent in env.agents:
+            batch_obs[agent.name].append(np.hstack([s[agent.observables],env.t]))
+            action, log_prob = agent.get_action(obs)
+            agent.a=action
+            agent.log_prob=log_prob
+
+        obs, rew,_ = env.step()
+        for m,agent in enumerate(env.agents):
+            batch_acts[agent.name].append(agent.a)
+            batch_log_probs[agent.name].append(agent.log_prob)
+            batch_rews[agent.name].append(rew[m])
+            ep_rews[agent.name].append(rew[agent.name])
+    for agent in env.agents:
+        batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name])
+        batch_obs[agent.name] = torch.tensor(batch_obs, dtype=torch.float)
+        batch_acts[agent.name] = torch.tensor(batch_acts, dtype=torch.float)
+        batch_log_probs[agent.name] = torch.tensor(batch_log_probs, dtype=torch.float)                                                             # ALG STEP 4
+    
+    return batch_obs, batch_acts, batch_log_probs, batch_rtgs
+

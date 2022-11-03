@@ -259,7 +259,7 @@ for episode in range(1000):
     episode_len=1000
     for ep in range(episode_len):
         env.t=episode_len-ep
-        s,r,a,sp=env.step()
+        s,r,a,sp=take_steps(env)
         
         
         for ind,ag in enumerate(env.agents):
