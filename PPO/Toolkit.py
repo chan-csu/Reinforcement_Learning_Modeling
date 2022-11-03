@@ -9,22 +9,10 @@ from collections import deque,namedtuple
 import ray
 import pandas as pd
 
-class NN(nn.Module):
-    """
-    This is a base class for all networks created in this algorithm
-    """
-    def __init__(self,input_dim,output_dim,hidden_dim=64,n_hidden=1,activation=nn.ReLU):
-        super(NN,self).__init__()
-        self.nn=nn.Sequential(
-            nn.Linear(input_dim,hidden_dim),activation(),
-            *[nn.Linear(hidden_dim,hidden_dim),activation() for _ in range(n_hidden)],
-            nn.Linear(hidden_dim,output_dim))
-    
-    def forward(self, obs):
-        return self.nn(obs)
 
-        
 
+class ActorCriticNN(nn.module):
+    def 
 
 class Memory:
     def __init__(self, max_size):
@@ -146,7 +134,6 @@ class Environment:
                 dilution_rate:float=0.05,
                 min_c:dict={},
                 max_c:dict={},
-                batch_iter=20
                 
                 ) -> None:
         self.name=name
@@ -166,7 +153,6 @@ class Environment:
             self.inlet_conditions[self.species.index(key)]=value
         self.min_c = np.zeros((len(self.species),))
         self.max_c = np.ones((len(self.species),))
-        self.batch_iter=batch_iter
         for key,value in max_c.items():
             self.max_c[self.species.index(key)]=value
         self.set_observables()
@@ -361,8 +347,15 @@ class Environment:
         for agent in self.agents:
             agent.actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
             agent.critic_network_=agent.critic_network(len(agent.observables)+1,len(agent.actions))
-            agent.optimizer_value_ = agent.optimizer_critic(agent.critic_network_.parameters(), lr=agent.lr_critic)
-            agent.optimizer_policy_ = agent.optimizer_actor(agent.actor_network_.parameters(), lr=agent.lr_actor)
+            agent.target_actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
+            agent.target_critic_network_=agent.critic_network(len(agent.observables)+1,len(agent.actions))
+            agent.optimizer_value_ = agent.optimizer_value(agent.critic_network_.parameters(), lr=agent.lr_critic)
+            agent.optimizer_policy_ = agent.optimizer_policy(agent.actor_network_.parameters(), lr=agent.lr_actor)
+            agent.reward_network_=agent.reward_network(len(agent.observables)+1,len(agent.actions),30)
+            agent.optimizer_reward_ = agent.optimizer_reward(agent.reward_network_.parameters(), lr=agent.lr_reward)
+            # agent.feasibility_network_=agent.feasibility_classifier(len(agent.observables)+1,len(agent.actions),50)
+            # agent.feasibility_optimizer_=agent.feasibility_optimizer(agent.feasibility_network_.parameters(),lr=0.001)
+
     
 class Agent:
     """ Any microbial agent will be an instance of this class.
@@ -370,10 +363,12 @@ class Agent:
     def __init__(self,
                 name:str,
                 model:cobra.Model,
-                actor_network:NN,
-                critic_network:NN,
-                optimizer_critic:torch.optim.Adam,
-                optimizer_actor:torch.optim.Adam,
+                actor_network:DDPGActor,
+                critic_network:DDPGCritic,
+                reward_network: Reward,
+                optimizer_value:torch.optim.Adam,
+                optimizer_policy:torch.optim.Adam,
+                optimizer_reward:torch.optim.Adam,
                 actions:list[str],
                 observables:list[str],
                 buffer:Memory,
@@ -382,6 +377,7 @@ class Agent:
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
                 lr_critic:float=0.001,
+                lr_reward:float=0.001,
                 buffer_sample_size:int=500,
                 tau:float=0.001,
                 alpha:float=0.001) -> None:
@@ -389,8 +385,8 @@ class Agent:
         self.name = name
         self.buffer = buffer
         self.model = model
-        self.optimizer_critic = optimizer_critic
-        self.optimizer_actor = optimizer_actor
+        self.actor_network = actor_network
+        self.critic_network = critic_network
         self.gamma = gamma
         self.update_batch_size = update_batch_size
         self.observables = observables
@@ -398,16 +394,17 @@ class Agent:
         self.observables = observables
         self.epsilon = epsilon
         self.general_uptake_kinetics=lambda C: 20*(C/(C+20))
+        self.optimizer_value = optimizer_value
+        self.optimizer_policy = optimizer_policy
         self.tau = tau
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
         self.buffer_sample_size = buffer_sample_size
         self.R=0
         self.alpha = alpha
-        self.actor_network = actor_network
-        self.critic_network = critic_network
-
-
+        self.reward_network = reward_network
+        self.optimizer_reward = optimizer_reward
+        self.lr_reward = lr_reward
 
 
         
