@@ -108,34 +108,19 @@ for episode in range(env.number_of_episodes):
             V, _ = env.evaluate(batch_obs, batch_acts)
             A_k = batch_rtgs - V.detach()    
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)       
-            for _ in range(self.n_updates_per_iteration):                                                       # ALG STEP 6 & 7
-		    	# Calculate V_phi and pi_theta(a_t | s_t)
-                V, curr_log_probs = self.evaluate(batch_obs, batch_acts)
-		    	# Calculate the ratio pi_theta(a_t | s_t) / pi_theta_k(a_t | s_t)
-		    	# NOTE: we just subtract the logs, which is the same as
-		    	# dividing the values and then canceling the log with e^log.
-		    	# For why we use log probabilities instead of actual probabilities,
-		    	# here's a great explanation: 
-		    	# https://cs.stackexchange.com/questions/70518/why-do-we-use-the-log-in-gradient-based-reinforcement-algorithms
-		    	# TL;DR makes gradient ascent easier behind the scenes.
-		    	ratios = torch.exp(curr_log_probs - batch_log_probs)
-		    	# Calculate surrogate losses.
-		    	surr1 = ratios * A_k
-		    	surr2 = torch.clamp(ratios, 1 - self.clip, 1 + self.clip) * A_k
-		    	# Calculate actor and critic losses.
-		    	# NOTE: we take the negative min of the surrogate losses because we're trying to maximize
-		    	# the performance function, but Adam minimizes the loss. So minimizing the negative
-		    	# performance function maximizes it.
-		    	actor_loss = (-torch.min(surr1, surr2)).mean()
-		    	critic_loss = nn.MSELoss()(V, batch_rtgs)
-		    	# Calculate gradients and perform backward propagation for actor network
-		    	self.actor_optim.zero_grad()
-		    	actor_loss.backward(retain_graph=True)
-		    	self.actor_optim.step()
-		    	# Calculate gradients and perform backward propagation for critic network
-		    	self.critic_optim.zero_grad()
-		    	critic_loss.backward()
-		    	self.critic_optim.step()                                                            
+            for _ in range(agent.n_updates_per_iteration):                                                       # ALG STEP 6 & 7
+                V, curr_log_probs = agent.evaluate(batch_obs[agent], batch_acts[agent])
+                ratios = torch.exp(curr_log_probs - batch_log_probs)
+                surr1 = ratios * A_k
+                surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
+                actor_loss = (-torch.min(surr1, surr2)).mean()
+                critic_loss = nn.MSELoss()(V, batch_rtgs)
+                agent.actor_optim.zero_grad()
+                actor_loss.backward(retain_graph=True)
+                agent.actor_optim.step()
+                agent.critic_optim.zero_grad()
+                critic_loss.backward()
+                agent.critic_optim.step()                                                            
     
         
  
