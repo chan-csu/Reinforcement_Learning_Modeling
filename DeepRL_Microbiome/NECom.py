@@ -70,11 +70,15 @@ agent1=tk.Agent("agent1",
                 model=tm.ToyModel_SA.copy(),
                 actor_network=tk.NN,
                 critic_network=tk.NN,
+                clip=0.0001,
+                lr_actor=0.000001,
+                lr_critic=0.0001,
+                grad_updates=1,
                 optimizer_actor=torch.optim.Adam,
                 optimizer_critic=torch.optim.Adam,
                 observables=['agent1', 'Glc', 'Starch'],
                 actions=["Amylase_Ex"],
-                gamma=0.999,
+                gamma=0.99,
                 tau=0.1
                 )
 
@@ -95,6 +99,7 @@ env=tk.Environment(name="Toy-Exoenzyme",
                            'Starch':10,
                            },
                            dt=0.1,
+                           batch_iter=1
                            )
 
 

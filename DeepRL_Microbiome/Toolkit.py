@@ -64,13 +64,13 @@ class Environment:
                 extracellular_reactions:list[dict],
                 initial_condition:dict,
                 inlet_conditions:dict,
-                batch_per_episode:int=50,
+                batch_per_episode:int=1000,
                 number_of_episodes:int=100,
                 dt:float=0.1,
                 dilution_rate:float=0.05,
                 min_c:dict={},
                 max_c:dict={},
-                batch_iter=20
+                batch_iter=1
                 
                 ) -> None:
         self.name=name
@@ -288,7 +288,7 @@ class Agent:
                 observables:list[str],
                 gamma:float,
                 clip:float=0.01,
-                grad_updates:int=10,
+                grad_updates:int=1,
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
                 lr_critic:float=0.001,
@@ -316,7 +316,7 @@ class Agent:
         self.alpha = alpha
         self.actor_network = actor_network
         self.critic_network = critic_network
-        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.5)
+        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.1)
         self.cov_mat = torch.diag(self.cov_var)
    
     def get_actions(self,observation:np.ndarray):
@@ -462,7 +462,7 @@ def rollout(env):
         batch_obs[agent.name] = torch.tensor(batch_obs[agent.name], dtype=torch.float)
         batch_acts[agent.name] = torch.tensor(batch_acts[agent.name], dtype=torch.float)
         batch_log_probs[agent.name] = torch.tensor(batch_log_probs[agent.name], dtype=torch.float)
-        batch_rews[agent.name]= torch.tensor(batch_log_probs[agent.name], dtype=torch.float)                                                            # ALG STEP 4
+        batch_rews[agent.name]= torch.tensor(batch_rews[agent.name], dtype=torch.float)                                                            # ALG STEP 4
         batch_obs_next[agent.name] = torch.tensor(batch_obs_next[agent.name], dtype=torch.float)
     return batch_obs,batch_obs_next,batch_acts, batch_log_probs, batch_rews
 

@@ -11,6 +11,8 @@ import time
 import ray
 import seaborn  as sns
 import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore") 
 # agent1=tk.Agent("agent1",
 #                 model=tm.Toy_Model_NE_1,
 #                 actor_network=tk.DDPGActor,
@@ -63,162 +65,20 @@ import matplotlib.pyplot as plt
 
 
 
-# for epoch in range(1000):
-#     Batch=env.batch_step(env.generate_random_c(8))
-#     for i in Batch:
-#         for ind,ag in enumerate(env.agents):
-#             ag.buffer.push(i[0][ag.observables],i[2][ind],i[1][ind],i[3][ag.observables])
-#     for ind,ag in enumerate(env.agents):
-#         S,R,A,Sp=ag.buffer.sample(min(ag.buffer_sample_size,ag.buffer.buffer.__len__()))
-#         ag.optimizer_value_.zero_grad()
-#         Qvals = ag.critic_network_(torch.FloatTensor(S), torch.FloatTensor(A))
-#         next_actions = ag.actor_network_(torch.FloatTensor(Sp))
-#         next_Q = ag.target_critic_network_.forward(torch.FloatTensor(Sp), next_actions.detach())
-#         Qprime = torch.FloatTensor(np.expand_dims(np.array(R),1)) + next_Q
-#         print(np.sum(R))
-#         critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
-#         critic_loss.backward()
-#         ag.optimizer_value_.step()
-#         ag.optimizer_policy_.zero_grad()
-#         policy_loss = -ag.critic_network_(torch.FloatTensor(S), ag.actor_network_(torch.FloatTensor(S))).mean()
-#         policy_loss.backward()
-#         ag.optimizer_policy_.step()
-#         print("Epoch: ",epoch,"Agent: ",ag.name,"Critic Loss: ",critic_loss.item())
-#         for target_param, param in zip(ag.target_actor_network_.parameters(), ag.actor_network_.parameters()):
-#             target_param.data.copy_(param.data * ag.tau + target_param.data * (1.0 - ag.tau))
-    
-#         for target_param, param in zip(ag.target_critic_network_.parameters(), ag.critic_network_.parameters()):
-#             target_param.data.copy_(param.data * ag.tau + target_param.data * (1.0 - ag.tau))
-# for episode in range(1000):
-#     env.reset()
-
-#     for agent in env.agents:
-#         agent.epsilon=1
-#         agent.rewards=[]
-#     for ep in range(1000):
-#         s,r,a,sp=env.step()
-#         for ind,ag in enumerate(env.agents):
-#             ag.buffer.push(s[ag.observables],r[ind],a[ind],sp[ag.observables])
-#             ag.rewards.append(r[ind])
-#             s_,r_,a_,sp_=ag.buffer.sample(min(ag.buffer_sample_size,ag.buffer.buffer.__len__()))
-#             ag.optimizer_value_.zero_grad()
-#             Qvals = ag.critic_network_(torch.FloatTensor(s_), torch.FloatTensor(a_))
-#             next_actions = ag.actor_network_(torch.FloatTensor(sp_))
-#             next_Q = ag.target_critic_network_.forward(torch.FloatTensor(sp_), next_actions.detach())
-#             Qprime = torch.FloatTensor(np.expand_dims(np.array(r_),1)) + next_Q
-#             critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
-#             critic_loss.backward()
-#             ag.optimizer_value_.step()
-#             ag.optimizer_policy_.zero_grad()
-#             policy_loss = -ag.critic_network_(torch.FloatTensor(s_), ag.actor_network_(torch.FloatTensor(s_))).mean()
-#             policy_loss.backward()
-#             ag.optimizer_policy_.step()
-#             for target_param, param in zip(ag.target_actor_network_.parameters(), ag.actor_network_.parameters()):
-#                 target_param.data.copy_(param.data * ag.tau + target_param.data * (1.0 - ag.tau))
-#             for target_param, param in zip(ag.target_critic_network_.parameters(),ag.critic_network_.parameters()):
-#                 target_param.data.copy_(param.data * ag.tau + target_param.data * (1.0 - ag.tau))
-            
-#     for agent in env.agents:
-#         print(episode)
-#         print(np.sum(agent.rewards))
-#         print(f'{agent.name} : {agent.actor_network_(torch.FloatTensor(env.state[agent.observables])).detach().numpy()}')
-    
-# for episode in range(1000):
-#     env.reset()
-#     env.episode=episode
-
-#     for agent in env.agents:
-#         agent.rewards=[]
-#     C=[]
-#     episode_len=1000
-#     for ep in range(episode_len):
-#         env.t=episode_len-ep
-#         s,r,a,sp=env.step()
-        
-#         for ind,ag in enumerate(env.agents):
-#             ag.rewards.append(r[ind])
-#             ag.optimizer_value_.zero_grad()
-#             Qvals = ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
-#             next_actions = ag.actor_network_(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])))
-#             if env.t==1:
-#                 next_Q = torch.FloatTensor([0])
-#             else:
-#                 next_Q = ag.critic_network_.forward(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])), next_actions.detach())
-
-            
-            
-#             Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))+ag.gamma*next_Q
-#             critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
-#             critic_loss.backward()
-#             ag.optimizer_value_.step()
-#             ag.optimizer_policy_.zero_grad()
-#             policy_loss = -ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), ag.actor_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])))).mean()
-#             policy_loss.backward()
-#             ag.optimizer_policy_.step()
-#         C.append(env.state.copy()) 
-
-#     pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
-
-#     for agent in env.agents:
-#         print(episode)
-#         print(np.sum(agent.rewards))    
-    
-    
-
-
-
-
-
-
-
-
-# for episode in range(10000):
-#     env.reset()
-
-#     for agent in env.agents:
-#         agent.epsilon=0.01+0.2*np.exp(-episode/50)
-#         agent.rewards=[]
-#     C=[]
-#     for ep in range(1000):
-#         s,r,a,sp=env.step()
-#         for ind,ag in enumerate(env.agents):
-#             ag.rewards.append(r[ind])
-#             ag.optimizer_value_.zero_grad()
-#             Qvals = ag.critic_network_(torch.FloatTensor(s[ag.observables]), torch.FloatTensor(a[ind]))
-#             next_actions = ag.actor_network_(torch.FloatTensor(sp[ag.observables]))
-#             next_Q = ag.critic_network_.forward(torch.FloatTensor(sp[ag.observables]), next_actions.detach())
-#             Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0)) + next_Q
-#             td_error=r[ind]-ag.R-Qvals.detach()+Qprime.detach()
-#             ag.R=ag.R+ag.alpha*td_error.detach()
-#             critic_loss=nn.MSELoss()(Qvals,r[ind]-ag.R+Qprime.detach())
-#             critic_loss.backward()
-#             ag.optimizer_value_.step()
-#             ag.optimizer_policy_.zero_grad()
-#             policy_loss = -ag.critic_network_(torch.FloatTensor(s[ag.observables]), ag.actor_network_(torch.FloatTensor(s[ag.observables]))).mean()
-#             policy_loss.backward()
-#             ag.optimizer_policy_.step()
-#         C.append(env.state.copy()) 
-#     pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
-#     for agent in env.agents:
-#         print(episode)
-#         print(np.sum(agent.rewards))
-
 
 agent1=tk.Agent("agent1",
                 model=tm.ToyModel_SA.copy(),
-                actor_network=tk.DDPGActor,
-                critic_network=tk.DDPGCritic,
-                reward_network=tk.Reward,
-                optimizer_policy=torch.optim.Adam,
-                optimizer_value=torch.optim.Adam,
-                optimizer_reward=torch.optim.Adam,
-                buffer=tk.Memory(max_size=100000),
+                actor_network=tk.NN,
+                critic_network=tk.NN,
+                clip=0.05,
+                lr_actor=0.00001,
+                lr_critic=0.0001,
+                grad_updates=10,
+                optimizer_actor=torch.optim.Adam,
+                optimizer_critic=torch.optim.Adam,
                 observables=['agent1', 'Glc', 'Starch'],
                 actions=["Amylase_Ex"],
-                gamma=1,
-                update_batch_size=8,
-                lr_actor=0.0000001,
-                lr_critic=0.0001,
+                gamma=0.999,
                 tau=0.1
                 )
 
@@ -227,12 +87,11 @@ agents=[agent1]
 env=tk.Environment(name="Toy-Exoenzyme",
                     agents=agents,
                     dilution_rate=0.0001,
-                    
                     initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
                     inlet_conditions={"Starch":10},
                     extracellular_reactions=[{"reaction":{
-                    "Glc":10,
-                    "Starch":-0.1,},
+                    "Glc":1,
+                    "Starch":-0.01,},
                     "kinetics": (lambda x,y: x*y/(10+x),("Glc","Amylase"))}]
                     ,
                     max_c={'Glc':100,
@@ -240,123 +99,42 @@ env=tk.Environment(name="Toy-Exoenzyme",
                            'Starch':10,
                            },
                            dt=0.1,
+                           batch_iter=200,
+                           number_of_episodes=1000,
+                           batch_per_episode=5,
                            )
 
 
-
-
-
-
-
-
-for episode in range(1000):
+for episode in range(env.number_of_episodes):
     env.reset()
-    env.episode=episode
-
+    env.returns={agent.name:[] for agent in env.agents}
     for agent in env.agents:
-        agent.rewards=[]
-    C=[]
-    episode_len=1000
-    for ep in range(episode_len):
-        env.t=episode_len-ep
-        s,r,a,sp=env.step()
+        agent.cov_var = torch.full(size=(len(agent.actions),), fill_value=1-1*episode/env.number_of_episodes)
+
+    for batch in range(env.batch_per_episode):
+        env.batch_number=batch
+        batch_obs,batch_obs_next,batch_acts, batch_log_probs, batch_rews=tk.rollout(env)
         
-        
-        for ind,ag in enumerate(env.agents):
-            ag.rewards.append(r[ind])
-            # ag.optimizer_reward_.zero_grad()
-            # # r_pred=ag.reward_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
-            # # r_loss=nn.MSELoss()(r_pred,torch.FloatTensor(np.expand_dims(np.array(r[ind]),0)))
-            # # r_loss.backward()
-            # ag.optimizer_reward_.step()
-            ag.optimizer_value_.zero_grad()
-            Qvals = ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
-            next_actions = ag.actor_network_(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])))
-            if env.t==1:
-                next_Q = torch.FloatTensor([0])
-            else:
-                next_Q = ag.critic_network_.forward(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])), next_actions.detach())
-            Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))+ag.gamma*next_Q
-            critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
-            critic_loss.backward()
-            ag.optimizer_value_.step()
-            ag.optimizer_policy_.zero_grad()
-            policy_loss = -ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), ag.actor_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])))).mean()
-            policy_loss.backward()
-            ag.optimizer_policy_.step()
-        C.append(env.state.copy()) 
-
-    pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
-
-    for agent in env.agents:
-        print(episode)
-        print(np.sum(agent.rewards))    
-# all_results=[]
-# number_of_simulations=16
-# for batch in range(number_of_simulations):
-#     agent1=tk.Agent("agent1",
-#                 model=tm.ToyModel_SA.copy(),
-#                 actor_network=tk.DDPGActor,
-#                 critic_network=tk.DDPGCritic,
-#                 reward_network=tk.Reward,
-#                 optimizer_policy=torch.optim.Adam,
-#                 optimizer_value=torch.optim.Adam,
-#                 optimizer_reward=torch.optim.Adam,
-#                 buffer=tk.Memory(max_size=100000),
-#                 observables=['agent1', 'Glc', 'Starch'],
-#                 actions=["Amylase_Ex"],
-#                 gamma=0.99,
-#                 update_batch_size=8,
-#                 lr_actor=0.00001,
-#                 lr_critic=0.0001,
-#                 tau=0.1
-#                 )
-
-#     agents=[agent1]
-
-#     env=tk.Environment(name="Toy-Exoenzyme",
-#                     agents=agents,
-#                     dilution_rate=0.01,
-                    
-#                     initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
-#                     inlet_conditions={"Starch":10},
-#                     extracellular_reactions=[{"reaction":{
-#                     "Glc":10,
-#                     "Starch":-0.1,},
-#                     "kinetics": (lambda x,y: 0.01*x*y/(10+x),("Glc","Amylase"))}]
-#                     ,
-#                     max_c={'Glc':100,
-#                            'agent1':10,  
-#                            'Starch':10,
-#                            },
-#                            dt=0.1)
-
-                
-#     all_results.append(tk.simulate.remote(env,200,1000))
-# all_results= ray.get(all_results)
-# total_rew={"Reward":[],"Agent":[],"Step":[]}
-# total_rec={"Action":[],"Replicate":[],"Step":[]}
-# for i in range(len(all_results)):
-#     rew,rec=all_results[i]
-#     for j in range(len(rew)):
-#         total_rew["Reward"].extend(rew[j])
-#         total_rew["Agent"].extend([j+1]*len(rew[j]))
-#         total_rew["Step"].extend(range(len(rew[j])))
+        for agent in env.agents:
+            env.returns[agent.name].extend(batch_rews[agent.name])
+            V, _ ,VP= agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name] ,batch_acts[agent.name])
+            bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP.detach()
+            A_k = bootstrap_vals - V.detach()    
+            for _ in range(agent.grad_updates):                                                       # ALG STEP 6 & 7
+                V, curr_log_probs,VP = agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name],batch_acts[agent.name])
+                bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP
+                ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
+                surr1 = ratios * A_k.detach()
+                surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
+                actor_loss = (-torch.min(surr1, surr2)).mean()
+                critic_loss = nn.MSELoss()(V, bootstrap_vals.detach())
+                agent.optimizer_policy_.zero_grad()
+                actor_loss.backward(retain_graph=True)
+                agent.optimizer_policy_.step()
+                agent.optimizer_value_.zero_grad()
+                critic_loss.backward()
+                agent.optimizer_value_.step()                                                            
     
-#     total_rec["Action"].extend(rec)
-#     total_rec["Replicate"].extend([i+1]*len(rec))
-#     total_rec["Step"].extend(range(len(rec)))
-
-# col_names=env.species.copy()
-# for i in range(len(env.agents)):
-#     col_names.extend([env.agents[i].model.reactions[j].id for j in env.agents[i].actions])
-# col_names.extend(["Replicate","Step"])
-# reward_data=pd.DataFrame(total_rew)
-# record_data=pd.DataFrame(np.hstack([np.array(total_rec["Action"]),np.expand_dims(np.array(total_rec["Replicate"]),axis=1),np.expand_dims(np.array(total_rec["Step"]),axis=1)]),columns=col_names)
-# record_data=pd.melt(record_data,value_vars=record_data.columns[:-2],id_vars=["Step","Replicate"])
-# sns_plot=sns.lineplot(data=reward_data,x="Step",y="Reward",hue="Agent",palette="deep")
-# record_data.to_csv("record_data.csv")
-# reward_data.to_csv("reward_data.csv")
-# # sns.lineplot(data=record_data,x="Step",y="value",palette="deep",hue="variable")
-# plt.savefig("Reward.png")
-# plt.show()
+    print(f"Episode {episode} finished")
+    for agent in env.agents:
+        print(f"{agent.name} return is:  {torch.FloatTensor(env.returns[agent.name]).sum()}")
