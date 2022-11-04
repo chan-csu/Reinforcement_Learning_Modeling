@@ -17,13 +17,18 @@ class NN(nn.Module):
     """
     def __init__(self,input_dim,output_dim,hidden_dim=64,n_hidden=1,activation=nn.ReLU):
         super(NN,self).__init__()
-        self.nn=nn.Sequential(
-            nn.Linear(input_dim,hidden_dim),activation(),
-            *[nn.Linear(hidden_dim,hidden_dim),activation() for _ in range(n_hidden)],
-            nn.Linear(hidden_dim,output_dim))
+        self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
+        self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),)
+        self.output=nn.Linear(hidden_dim,output_dim)
     
     def forward(self, obs):
-        return self.nn(obs)
+        out=self.inlayer(obs)
+        out=self.hidden(out)
+        out=self.output(out)
+        return out
 
 def rollout(self):
   # Batch data
@@ -97,6 +102,8 @@ class Environment:
                 extracellular_reactions:list[dict],
                 initial_condition:dict,
                 inlet_conditions:dict,
+                batch_per_episode:int=50,
+                number_of_episodes:int=100,
                 dt:float=0.1,
                 dilution_rate:float=0.05,
                 min_c:dict={},
@@ -109,6 +116,8 @@ class Environment:
         self.num_agents = len(agents)
         self.extracellular_reactions = extracellular_reactions
         self.dt = dt
+        self.batch_per_episode = batch_per_episode
+        self.number_of_episodes=number_of_episodes
         self.dilution_rate = dilution_rate
         self.mapping_matrix=self.resolve_exchanges()
         self.species=self.extract_species()
@@ -350,7 +359,7 @@ class Agent:
         """ 
         Gets the actions and their probabilities for the agent.
         """
-        mean = self.actor_network_(torch.tensor(observation, dtype=torch.float32)).detach().numpy()
+        mean = self.actor_network_(torch.tensor(observation, dtype=torch.float32)).detach()
         dist = MultivariateNormal(mean, self.cov_mat)
         action = dist.sample()
         log_prob = dist.log_prob(action)
@@ -362,7 +371,21 @@ class Agent:
         dist = MultivariateNormal(mean, self.cov_mat)
         log_probs = dist.log_prob(batch_acts)
         return V, log_probs 
+    
+    def compute_rtgs(self, batch_rews):
 
+        batch_rtgs = []
+
+        for ep_rews in reversed(batch_rews):
+            discounted_reward = 0 # The discounted reward so far
+            for rew in reversed(ep_rews):
+                discounted_reward = rew + discounted_reward * self.gamma
+                batch_rtgs.insert(0, discounted_reward)
+
+		# Convert the rewards-to-go into a tensor
+        batch_rtgs = torch.tensor(batch_rtgs, dtype=torch.float)
+
+        return batch_rtgs
 
 
         
@@ -448,19 +471,21 @@ def simulate(env,episodes=200,steps=1000):
             print(np.sum(agent.rewards))
             env.rewards[ag_ind,episode]=np.sum(agent.rewards)
     return env.rewards.copy(),env.record.copy()
+
+
+
 def rollout(env):
     batch_obs = {key.name:[] for key in env.agents}
     batch_acts = {key.name:[] for key in env.agents}
     batch_log_probs = {key.name:[] for key in env.agents}
     batch_rews = {key.name:[] for key in env.agents}
     batch_rtgs = {key.name:[] for key in env.agents}
-    ep_rews = {key.name:[] for key in env.agents}
     obs=env.state.copy()
     for step in range(env.batch_iter):
-        env.t=env.batch_per_episode-(env.batch_number*env.batch_iter+step)
+        env.t=env.batch_per_episode*env.batch_iter-(env.batch_number*env.batch_iter+step)
         for agent in env.agents:
-            batch_obs[agent.name].append(np.hstack([s[agent.observables],env.t]))
-            action, log_prob = agent.get_action(obs)
+            batch_obs[agent.name].append(np.hstack([obs[agent.observables],env.t]))
+            action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
             agent.a=action
             agent.log_prob=log_prob
 
@@ -469,7 +494,6 @@ def rollout(env):
             batch_acts[agent.name].append(agent.a)
             batch_log_probs[agent.name].append(agent.log_prob)
             batch_rews[agent.name].append(rew[m])
-            ep_rews[agent.name].append(rew[agent.name])
     for agent in env.agents:
         batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name])
         batch_obs[agent.name] = torch.tensor(batch_obs, dtype=torch.float)
