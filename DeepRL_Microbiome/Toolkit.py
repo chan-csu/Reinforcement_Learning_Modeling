@@ -21,6 +21,11 @@ class NN(nn.Module):
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),)
         self.output=nn.Linear(hidden_dim,output_dim)
     
@@ -39,49 +44,6 @@ def rollout(self):
     batch_rtgs = {}            # batch rewards-to-go
     batch_lens = {}            # episodic lengths in batch
         
-
-
-
-
-
-
-
-
-
-        
-    
-class DDPGActor(nn.Module):
-
-    def __init__(self, obs_size, act_size):
-        super(DDPGActor, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(obs_size, 30),nn.ReLU(),
-            nn.Linear(30, act_size),
-            nn.Hardtanh(0, 10),)
-
-    def forward(self, x):
-       return self.net(x)
-
-class DDPGCritic(nn.Module):       
-    
-    def __init__(self, obs_size, act_size):
-
-        super(DDPGCritic, self).__init__()
-
-
-        self.out_net = nn.Sequential(
-                       nn.Linear(obs_size + act_size, 30),nn.ReLU(), 
-                       nn.Linear(30,30),nn.ReLU(), 
-                       nn.Linear(30,30),nn.ReLU(), 
-                       nn.Linear(30,30),nn.ReLU(), 
-                       nn.Linear(30, 1),
-                       )
-    
-    def forward(self, x, a):
-                 
-        return self.out_net(torch.cat([x, a],dim=0)) 
-
-
 
 
 class Environment:
@@ -226,10 +188,10 @@ class Environment:
             for metabolite in ex_reaction["reaction"].keys():
                 dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
         dCdt+=self.dilution_rate*(self.inlet_conditions-self.state)
-        # C=self.state.copy()
+        C=self.state.copy()
         self.state += dCdt*self.dt
         Cp=self.state.copy()
-        return Cp,list(i.reward for i in self.agents),list(i.a for i in self.agents)
+        return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
 
     @ray.remote
@@ -307,8 +269,8 @@ class Environment:
     def set_networks(self):
         """ Sets the networks for the agents in the environment."""
         for agent in self.agents:
-            agent.actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
-            agent.critic_network_=agent.critic_network(len(agent.observables)+1,len(agent.actions))
+            agent.actor_network_=agent.actor_network(len(agent.observables),len(agent.actions))
+            agent.critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
             agent.optimizer_value_ = agent.optimizer_critic(agent.critic_network_.parameters(), lr=agent.lr_critic)
             agent.optimizer_policy_ = agent.optimizer_actor(agent.actor_network_.parameters(), lr=agent.lr_actor)
     
@@ -325,7 +287,8 @@ class Agent:
                 actions:list[str],
                 observables:list[str],
                 gamma:float,
-                update_batch_size:int,
+                clip:float=0.01,
+                grad_updates:int=10,
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
                 lr_critic:float=0.001,
@@ -338,17 +301,18 @@ class Agent:
         self.optimizer_critic = optimizer_critic
         self.optimizer_actor = optimizer_actor
         self.gamma = gamma
-        self.update_batch_size = update_batch_size
         self.observables = observables
         self.actions = [self.model.reactions.index(item) for item in actions]
         self.observables = observables
         self.epsilon = epsilon
         self.general_uptake_kinetics=lambda C: 20*(C/(C+20))
         self.tau = tau
+        self.clip = clip
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
         self.buffer_sample_size = buffer_sample_size
         self.R=0
+        self.grad_updates = grad_updates
         self.alpha = alpha
         self.actor_network = actor_network
         self.critic_network = critic_network
@@ -365,12 +329,13 @@ class Agent:
         log_prob = dist.log_prob(action)
         return action.detach().numpy(), log_prob.detach()
    
-    def evaluate(self, batch_obs,batch_acts):
-        V = self.critic(batch_obs).squeeze()
-        mean = self.actor(batch_obs)
+    def evaluate(self, batch_obs,batch_obs_next,batch_acts):
+        V = self.critic_network_(batch_obs).squeeze()
+        VP=self.critic_network_(batch_obs_next).squeeze()
+        mean = self.actor_network_(batch_obs)
         dist = MultivariateNormal(mean, self.cov_mat)
         log_probs = dist.log_prob(batch_acts)
-        return V, log_probs 
+        return V, log_probs ,VP
     
     def compute_rtgs(self, batch_rews):
 
@@ -437,8 +402,6 @@ def simulate(env,episodes=200,steps=1000):
         for ep in range(episode_len):
             env.t=episode_len-ep
             s,r,a,sp=env.step()
-
-
             for ind,ag in enumerate(env.agents):
                 ag.rewards.append(r[ind])
                 # ag.optimizer_reward_.zero_grad()
@@ -476,29 +439,30 @@ def simulate(env,episodes=200,steps=1000):
 
 def rollout(env):
     batch_obs = {key.name:[] for key in env.agents}
+    batch_obs_next={key.name:[] for key in env.agents}
     batch_acts = {key.name:[] for key in env.agents}
     batch_log_probs = {key.name:[] for key in env.agents}
     batch_rews = {key.name:[] for key in env.agents}
-    batch_rtgs = {key.name:[] for key in env.agents}
-    obs=env.state.copy()
     for step in range(env.batch_iter):
-        env.t=env.batch_per_episode*env.batch_iter-(env.batch_number*env.batch_iter+step)
-        for agent in env.agents:
-            batch_obs[agent.name].append(np.hstack([obs[agent.observables],env.t]))
-            action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
+        obs = env.state.copy()
+        for agent in env.agents:   
+            action, log_prob = agent.get_actions(obs[agent.observables])
             agent.a=action
-            agent.log_prob=log_prob
-
-        obs, rew,_ = env.step()
+            agent.log_prob=log_prob         
+        obs, rew,_,obs_p = env.step()
         for m,agent in enumerate(env.agents):
+            batch_obs[agent.name].append(obs[agent.observables])
+            batch_obs_next[agent.name].append(obs_p[agent.observables])
             batch_acts[agent.name].append(agent.a)
             batch_log_probs[agent.name].append(agent.log_prob)
             batch_rews[agent.name].append(rew[m])
-    for agent in env.agents:
-        batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name])
-        batch_obs[agent.name] = torch.tensor(batch_obs, dtype=torch.float)
-        batch_acts[agent.name] = torch.tensor(batch_acts, dtype=torch.float)
-        batch_log_probs[agent.name] = torch.tensor(batch_log_probs, dtype=torch.float)                                                             # ALG STEP 4
     
-    return batch_obs, batch_acts, batch_log_probs, batch_rtgs
+    for agent in env.agents:
+
+        batch_obs[agent.name] = torch.tensor(batch_obs[agent.name], dtype=torch.float)
+        batch_acts[agent.name] = torch.tensor(batch_acts[agent.name], dtype=torch.float)
+        batch_log_probs[agent.name] = torch.tensor(batch_log_probs[agent.name], dtype=torch.float)
+        batch_rews[agent.name]= torch.tensor(batch_log_probs[agent.name], dtype=torch.float)                                                            # ALG STEP 4
+        batch_obs_next[agent.name] = torch.tensor(batch_obs_next[agent.name], dtype=torch.float)
+    return batch_obs,batch_obs_next,batch_acts, batch_log_probs, batch_rews
 

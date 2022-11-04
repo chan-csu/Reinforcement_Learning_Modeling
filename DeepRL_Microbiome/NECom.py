@@ -11,6 +11,8 @@ import time
 import ray
 import seaborn  as sns
 import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore") 
 # agent1=tk.Agent("agent1",
 #                 model=tm.Toy_Model_NE_1,
 #                 actor_network=tk.DDPGActor,
@@ -72,10 +74,7 @@ agent1=tk.Agent("agent1",
                 optimizer_critic=torch.optim.Adam,
                 observables=['agent1', 'Glc', 'Starch'],
                 actions=["Amylase_Ex"],
-                gamma=1,
-                update_batch_size=8,
-                lr_actor=0.0000001,
-                lr_critic=0.0001,
+                gamma=0.999,
                 tau=0.1
                 )
 
@@ -101,26 +100,32 @@ env=tk.Environment(name="Toy-Exoenzyme",
 
 for episode in range(env.number_of_episodes):
     env.reset()
+    env.returns={agent.name:[] for agent in env.agents}
     for batch in range(env.batch_per_episode):
         env.batch_number=batch
-        batch_obs, batch_acts, batch_log_probs, batch_rtgs=tk.rollout(env)
+        batch_obs,batch_obs_next,batch_acts, batch_log_probs, batch_rews=tk.rollout(env)
+        
         for agent in env.agents:
-            V, _ = env.evaluate(batch_obs, batch_acts)
-            A_k = batch_rtgs - V.detach()    
+            env.returns[agent.name].extend(batch_rews[agent.name])
+            V, _ ,VP= agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name] ,batch_acts[agent.name])
+            bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP.detach()
+            A_k = bootstrap_vals - V.detach()    
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)       
-            for _ in range(agent.n_updates_per_iteration):                                                       # ALG STEP 6 & 7
-                V, curr_log_probs = agent.evaluate(batch_obs[agent], batch_acts[agent])
-                ratios = torch.exp(curr_log_probs - batch_log_probs)
+            for _ in range(agent.grad_updates):                                                       # ALG STEP 6 & 7
+                V, curr_log_probs,VP = agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name],batch_acts[agent.name])
+                bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP
+                ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
                 surr1 = ratios * A_k
                 surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
                 actor_loss = (-torch.min(surr1, surr2)).mean()
-                critic_loss = nn.MSELoss()(V, batch_rtgs)
-                agent.actor_optim.zero_grad()
+                critic_loss = nn.MSELoss()(V, bootstrap_vals.detach())
+                agent.optimizer_policy_.zero_grad()
                 actor_loss.backward(retain_graph=True)
-                agent.actor_optim.step()
-                agent.critic_optim.zero_grad()
+                agent.optimizer_policy_.step()
+                agent.optimizer_value_.zero_grad()
                 critic_loss.backward()
-                agent.critic_optim.step()                                                            
+                agent.optimizer_value_.step()                                                            
     
-        
- 
+    print(f"Episode {episode} finished")
+    for agent in env.agents:
+        print(f"{agent.name} return is:  {torch.FloatTensor(env.returns[agent.name]).sum()}")
