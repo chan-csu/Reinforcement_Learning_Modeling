@@ -15,10 +15,19 @@ class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=128,activation=nn.ReLU):
+    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.Tanh ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),)
         self.output=nn.Linear(hidden_dim,output_dim)
@@ -29,14 +38,7 @@ class NN(nn.Module):
         out=self.output(out)
         return out
 
-def rollout(self):
-  # Batch data
-    batch_obs = {}             # batch observations
-    batch_acts = {}            # batch actions
-    batch_log_probs = {}      # log probs of each action
-    batch_rews = {}           # batch rewards
-    batch_rtgs = {}            # batch rewards-to-go
-    batch_lens = {}            # episodic lengths in batch
+
         
 
 
@@ -146,18 +148,18 @@ class Environment:
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
 
 
-
+                self.agents[i].reward =- abs(M.a[index]-M.model.reactions[M.actions[index]].lower_bound)
             Sols[i] = self.agents[i].model.optimize()
             # self.agents[i].feasibility_optimizer_.zero_grad()
             if Sols[i].status == 'infeasible':
-                self.agents[i].reward=-1
+                self.agents[i].reward+=-1
                 dCdt[i] = 0
                 # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 # l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
             
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
-                self.agents[i].reward =Sols[i].objective_value*self.state[i]
+                self.agents[i].reward +=Sols[i].objective_value*self.state[i]
                 # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 # l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
             # l.backward()
@@ -310,7 +312,7 @@ class Agent:
         self.alpha = alpha
         self.actor_network = actor_network
         self.critic_network = critic_network
-        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.1)
+        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.4)
         self.cov_mat = torch.diag(self.cov_var)
    
     def get_actions(self,observation:np.ndarray):
