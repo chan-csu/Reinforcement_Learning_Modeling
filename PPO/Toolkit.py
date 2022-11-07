@@ -61,12 +61,14 @@ class Environment:
                 initial_condition:dict,
                 inlet_conditions:dict,
                 batch_per_episode:int=1000,
-                number_of_episodes:int=100,
+                number_of_batches:int=100,
                 dt:float=0.1,
+                episode_time:float=1000,
                 dilution_rate:float=0.05,
                 min_c:dict={},
                 max_c:dict={},
-                batch_iter=1
+                episodes_per_batch:int=10,
+                
                 
                 ) -> None:
         self.name=name
@@ -74,8 +76,10 @@ class Environment:
         self.num_agents = len(agents)
         self.extracellular_reactions = extracellular_reactions
         self.dt = dt
+        self.episode_length = int(episode_time/dt)
+        self.episodes_per_batch=episodes_per_batch
+        self.number_of_batches=number_of_batches
         self.batch_per_episode = batch_per_episode
-        self.number_of_episodes=number_of_episodes
         self.dilution_rate = dilution_rate
         self.mapping_matrix=self.resolve_exchanges()
         self.species=self.extract_species()
@@ -88,7 +92,6 @@ class Environment:
             self.inlet_conditions[self.species.index(key)]=value
         self.min_c = np.zeros((len(self.species),))
         self.max_c = np.ones((len(self.species),))
-        self.batch_iter=batch_iter
         for key,value in max_c.items():
             self.max_c[self.species.index(key)]=value
         self.set_observables()
@@ -265,8 +268,8 @@ class Environment:
     def set_networks(self):
         """ Sets the networks for the agents in the environment."""
         for agent in self.agents:
-            agent.actor_network_=agent.actor_network(len(agent.observables),len(agent.actions))
-            agent.critic_network_=agent.critic_network(len(agent.observables),len(agent.actions))
+            agent.actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
+            agent.critic_network_=agent.critic_network(len(agent.observables)+1,1)
             agent.optimizer_value_ = agent.optimizer_critic(agent.critic_network_.parameters(), lr=agent.lr_critic)
             agent.optimizer_policy_ = agent.optimizer_actor(agent.actor_network_.parameters(), lr=agent.lr_actor)
     
@@ -325,13 +328,12 @@ class Agent:
         log_prob = dist.log_prob(action)
         return action.detach().numpy(), log_prob
    
-    def evaluate(self, batch_obs,batch_obs_next,batch_acts):
+    def evaluate(self, batch_obs,batch_acts):
         V = self.critic_network_(batch_obs).squeeze()
-        VP=self.critic_network_(batch_obs_next).squeeze()
         mean = self.actor_network_(batch_obs)
         dist = MultivariateNormal(mean, self.cov_mat)
         log_probs = dist.log_prob(batch_acts)
-        return V, log_probs ,VP
+        return V, log_probs 
     
     def compute_rtgs(self, batch_rews):
 
@@ -435,30 +437,39 @@ def simulate(env,episodes=200,steps=1000):
 
 def rollout(env):
     batch_obs = {key.name:[] for key in env.agents}
-    batch_obs_next={key.name:[] for key in env.agents}
     batch_acts = {key.name:[] for key in env.agents}
     batch_log_probs = {key.name:[] for key in env.agents}
+    episode_rews = {key.name:[] for key in env.agents}
     batch_rews = {key.name:[] for key in env.agents}
-    for step in range(env.batch_iter):
-        obs = env.state.copy()
-        for agent in env.agents:   
-            action, log_prob = agent.get_actions(obs[agent.observables])
-            agent.a=action
-            agent.log_prob=log_prob .detach()        
-        obs, rew,_,obs_p = env.step()
-        for m,agent in enumerate(env.agents):
-            batch_obs[agent.name].append(obs[agent.observables])
-            batch_obs_next[agent.name].append(obs_p[agent.observables])
-            batch_acts[agent.name].append(agent.a)
-            batch_log_probs[agent.name].append(agent.log_prob)
-            batch_rews[agent.name].append(rew[m])
+    batch_rtgs = {key.name:[] for key in env.agents}
+    for ep in range(env.episodes_per_batch):
+        env.reset()
+        episode_rews = {key.name:[] for key in env.agents}
+
+        for step in range(env.episode_length):
+            episode_len=env.episode_length
+            env.t=episode_len-step
+            obs = env.state.copy()
+            for agent in env.agents:   
+                action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
+                agent.a=action
+                agent.log_prob=log_prob .detach()        
+            s,r,a,sp=env.step()
+            for ind,ag in enumerate(env.agents):
+                batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
+                batch_acts[ag.name].append(a[ind])
+                batch_log_probs[ag.name].append(ag.log_prob)
+                episode_rews[ag.name].append(r[ind])
+        env.rewards[ag.name].append(np.sum(episode_rews[ag.name]))
+        for ag in env.agents:
+            batch_rews[ag.name].append(episode_rews[ag.name])
+
     
     for agent in env.agents:
 
         batch_obs[agent.name] = torch.tensor(batch_obs[agent.name], dtype=torch.float)
         batch_acts[agent.name] = torch.tensor(batch_acts[agent.name], dtype=torch.float)
         batch_log_probs[agent.name] = torch.tensor(batch_log_probs[agent.name], dtype=torch.float)
-        batch_rews[agent.name]= torch.tensor(batch_rews[agent.name], dtype=torch.float)                                                            # ALG STEP 4
-        batch_obs_next[agent.name] = torch.tensor(batch_obs_next[agent.name], dtype=torch.float)
-    return batch_obs,batch_obs_next,batch_acts, batch_log_probs, batch_rews
+        batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[ag.name]) 
+    return batch_obs,batch_acts, batch_log_probs, batch_rtgs
 

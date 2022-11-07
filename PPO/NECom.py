@@ -78,7 +78,7 @@ agent1=tk.Agent("agent1",
                 optimizer_critic=torch.optim.Adam,
                 observables=['agent1', 'Glc', 'Starch'],
                 actions=["Amylase_Ex"],
-                gamma=0.9999999999,
+                gamma=0.99999,
                 tau=0.1
                 )
 
@@ -92,51 +92,75 @@ env=tk.Environment(name="Toy-Exoenzyme",
                     extracellular_reactions=[{"reaction":{
                     "Glc":10,
                     "Starch":-0.1,},
-                    "kinetics": (lambda x,y: x*y/(10+x),("Glc","Amylase"))}]
-                    ,
+                    "kinetics": (lambda x,y: x*y/(10+x),("Glc","Amylase"))}],
                     max_c={'Glc':100,
                            'agent1':10,  
                            'Starch':10,
                            },
-                           dt=0.05,
-                           batch_iter=100,
-                           number_of_episodes=1000,
-                           batch_per_episode=10,
+                           dt=0.1,
+                           episode_time=50,
+                           number_of_batches=100,
+                           episodes_per_batch=5,
                            )
 
 
-for episode in range(env.number_of_episodes):
-    env.reset()
-    env.returns={agent.name:[] for agent in env.agents}
-    # for agent in env.agents:
-    #     # agent.cov_var = torch.full(size=(len(agent.actions),), fill_value=2*np.exp(-episode/50))
-    #     # agent.cov_mat = torch.diag(agent.cov_var)
-    for batch in range(env.batch_per_episode):
-        env.batch_number=batch
-        batch_obs,batch_obs_next,batch_acts, batch_log_probs, batch_rews=tk.rollout(env)
+# for episode in range(env.number_of_episodes):
+#     env.reset()
+#     env.returns={agent.name:[] for agent in env.agents}
+#     # for agent in env.agents:
+#     #     # agent.cov_var = torch.full(size=(len(agent.actions),), fill_value=2*np.exp(-episode/50))
+#     #     # agent.cov_mat = torch.diag(agent.cov_var)
+#     for batch in range(env.batch_per_episode):
+#         env.batch_number=batch
+#         batch_obs,batch_obs_next,batch_acts, batch_log_probs, batch_rews=tk.rollout(env)
         
-        for agent in env.agents:
-            env.returns[agent.name].extend(batch_rews[agent.name])
-            V, _ ,VP= agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name] ,batch_acts[agent.name])
-            bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP.detach()
-            A_k = bootstrap_vals - V.detach()   
-            A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5) 
-            V, curr_log_probs,_ = agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name],batch_acts[agent.name])
-            for _ in range(agent.grad_updates):                                                      
-                V, curr_log_probs,_ = agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name],batch_acts[agent.name])
-                bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP.detach()
-                ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
-                surr1 = ratios * A_k.detach()
-                surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
-                actor_loss = (-torch.min(surr1, surr2)).mean()
-                critic_loss = nn.MSELoss()(V, bootstrap_vals.detach())
-                agent.optimizer_policy_.zero_grad()
-                actor_loss.backward(retain_graph=True)
-                agent.optimizer_policy_.step()
-                agent.optimizer_value_.zero_grad()
-                critic_loss.backward()
-                agent.optimizer_value_.step()                                                            
+#         for agent in env.agents:
+#             env.returns[agent.name].extend(batch_rews[agent.name])
+#             V, _ ,VP= agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name] ,batch_acts[agent.name])
+#             bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP.detach()
+#             A_k = bootstrap_vals - V.detach()   
+#             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5) 
+#             V, curr_log_probs,_ = agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name],batch_acts[agent.name])
+#             for _ in range(agent.grad_updates):                                                      
+#                 V, curr_log_probs,_ = agent.evaluate(batch_obs[agent.name],batch_obs_next[agent.name],batch_acts[agent.name])
+#                 bootstrap_vals=batch_rews[agent.name]+agent.gamma*VP.detach()
+#                 ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
+#                 surr1 = ratios * A_k.detach()
+#                 surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
+#                 actor_loss = (-torch.min(surr1, surr2)).mean()
+#                 critic_loss = nn.MSELoss()(V, bootstrap_vals.detach())
+#                 agent.optimizer_policy_.zero_grad()
+#                 actor_loss.backward(retain_graph=True)
+#                 agent.optimizer_policy_.step()
+#                 agent.optimizer_value_.zero_grad()
+#                 critic_loss.backward()
+#                 agent.optimizer_value_.step()                                                            
     
-    print(f"Episode {episode} finished")
+#     print(f"Episode {episode} finished")
+#     for agent in env.agents:
+#         print(f"{agent.name} return is:  {torch.FloatTensor(env.returns[agent.name]).sum()}")
+
+env.rewards={agent.name:[] for agent in env.agents}
+for batch in range(env.number_of_batches):
+    batch_obs,batch_acts, batch_log_probs, batch_rtgs=tk.rollout(env)
     for agent in env.agents:
-        print(f"{agent.name} return is:  {torch.FloatTensor(env.returns[agent.name]).sum()}")
+        V, _= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
+        A_k = batch_rtgs[agent.name] - V.detach()   
+        A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5) 
+        for _ in range(agent.grad_updates):                                                      
+            V, curr_log_probs = agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
+            ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
+            surr1 = ratios * A_k.detach()
+            surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
+            actor_loss = (-torch.min(surr1, surr2)).mean()
+            critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
+            agent.optimizer_policy_.zero_grad()
+            actor_loss.backward(retain_graph=True)
+            agent.optimizer_policy_.step()
+            agent.optimizer_value_.zero_grad()
+            critic_loss.backward()
+            agent.optimizer_value_.step()                                                            
+    
+    print(f"Batch {batch} finished:")
+    for agent in env.agents:
+        print(f"{agent.name} return is:  {env.rewards[agent.name]}")
