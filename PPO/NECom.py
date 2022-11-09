@@ -12,6 +12,7 @@ import ray
 import seaborn  as sns
 import matplotlib.pyplot as plt
 import warnings
+import plotext as plt
 warnings.filterwarnings("ignore") 
 # agent1=tk.Agent("agent1",
 #                 model=tm.Toy_Model_NE_1,
@@ -70,15 +71,15 @@ agent1=tk.Agent("agent1",
                 model=tm.ToyModel_SA.copy(),
                 actor_network=tk.NN,
                 critic_network=tk.NN,
-                clip=0.001,
+                clip=0.01,
                 lr_actor=0.0001,
-                lr_critic=0.005,
-                grad_updates=10,
+                lr_critic=0.001,
+                grad_updates=5,
                 optimizer_actor=torch.optim.Adam,
                 optimizer_critic=torch.optim.Adam,
                 observables=['agent1', 'Glc', 'Starch'],
                 actions=["Amylase_Ex"],
-                gamma=0.99999,
+                gamma=1,
                 tau=0.1
                 )
 
@@ -98,8 +99,8 @@ env=tk.Environment(name="Toy-Exoenzyme",
                            'Starch':10,
                            },
                            dt=0.1,
-                           episode_time=50,
-                           number_of_batches=100,
+                           episode_time=500,
+                           number_of_batches=5000,
                            episodes_per_batch=5,
                            )
 
@@ -155,12 +156,16 @@ for batch in range(env.number_of_batches):
             actor_loss = (-torch.min(surr1, surr2)).mean()
             critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
             agent.optimizer_policy_.zero_grad()
-            actor_loss.backward(retain_graph=True)
+            actor_loss.backward(retain_graph=False)
             agent.optimizer_policy_.step()
             agent.optimizer_value_.zero_grad()
             critic_loss.backward()
             agent.optimizer_value_.step()                                                            
     
     print(f"Batch {batch} finished:")
-    for agent in env.agents:
-        print(f"{agent.name} return is:  {env.rewards[agent.name]}")
+    for index_ag,agent in enumerate(env.agents):
+        plt.clt() # to clear the terminal
+        plt.cld()
+        plt.clf()
+        plt.scatter(env.rewards[agent.name])
+    plt.show()
