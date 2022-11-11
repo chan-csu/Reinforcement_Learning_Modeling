@@ -7,11 +7,14 @@ import torch.functional as F
 import torch.nn as nn
 import numpy as np
 import pandas as pd
+import pickle
 import time
 import ray
+import os
 import seaborn  as sns
 import matplotlib.pyplot as plt
 import warnings
+import json
 import plotext as plt
 warnings.filterwarnings("ignore") 
 # agent1=tk.Agent("agent1",
@@ -71,7 +74,7 @@ agent1=tk.Agent("agent1",
                 model=tm.ToyModel_SA.copy(),
                 actor_network=tk.NN,
                 critic_network=tk.NN,
-                clip=0.01,
+                clip=0.1,
                 lr_actor=0.0001,
                 lr_critic=0.001,
                 grad_updates=5,
@@ -93,15 +96,15 @@ env=tk.Environment(name="Toy-Exoenzyme",
                     extracellular_reactions=[{"reaction":{
                     "Glc":10,
                     "Starch":-0.1,},
-                    "kinetics": (lambda x,y: x*y/(10+x),("Glc","Amylase"))}],
+                    "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
                     max_c={'Glc':100,
                            'agent1':10,  
                            'Starch':10,
                            },
                            dt=0.1,
-                           episode_time=500,
+                           episode_time=100,
                            number_of_batches=5000,
-                           episodes_per_batch=5,
+                           episodes_per_batch=10,
                            )
 
 
@@ -142,6 +145,11 @@ env=tk.Environment(name="Toy-Exoenzyme",
 #         print(f"{agent.name} return is:  {torch.FloatTensor(env.returns[agent.name]).sum()}")
 
 env.rewards={agent.name:[] for agent in env.agents}
+
+if not os.path.exists(f"Results/{env.name}"):
+    os.makedirs(f"Results/{env.name}")
+
+
 for batch in range(env.number_of_batches):
     batch_obs,batch_acts, batch_log_probs, batch_rtgs=tk.rollout(env)
     for agent in env.agents:
@@ -161,7 +169,17 @@ for batch in range(env.number_of_batches):
             agent.optimizer_value_.zero_grad()
             critic_loss.backward()
             agent.optimizer_value_.step()                                                            
-    
+    if batch%1000==0:
+        for agent in env.agents:
+            with open(f"Results/{env.name}/{agent.name}_{batch}.pkl", 'wb') as f:
+                pickle.dump(agent, f)
+        with open(f"Results/{env.name}/returns_{batch}.json", 'w') as f:
+            json.dump(env.rewards, f)
+
+
+        
+
+
     print(f"Batch {batch} finished:")
     for index_ag,agent in enumerate(env.agents):
         plt.clt() # to clear the terminal
@@ -169,3 +187,4 @@ for batch in range(env.number_of_batches):
         plt.clf()
         plt.scatter(env.rewards[agent.name])
     plt.show()
+

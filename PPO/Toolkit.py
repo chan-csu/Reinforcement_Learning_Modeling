@@ -302,7 +302,7 @@ class Agent:
         self.actions = [self.model.reactions.index(item) for item in actions]
         self.observables = observables
         self.epsilon = epsilon
-        self.general_uptake_kinetics=lambda C: 20*(C/(C+20))
+        self.general_uptake_kinetics=general_uptake
         self.tau = tau
         self.clip = clip
         self.lr_actor = lr_actor
@@ -431,7 +431,10 @@ def simulate(env,episodes=200,steps=1000):
             env.rewards[ag_ind,episode]=np.sum(agent.rewards)
     return env.rewards.copy(),env.record.copy()
 
-
+def general_kinetic(x,y):
+    return 0.1*x*y/(10+x)
+def general_uptake(c):
+    return 20*(c/(c+20))
 
 def rollout(env):
     batch_obs = {key.name:[] for key in env.agents}
