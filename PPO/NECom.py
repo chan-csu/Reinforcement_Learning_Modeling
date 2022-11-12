@@ -17,95 +17,45 @@ import warnings
 import json
 import plotext as plt
 warnings.filterwarnings("ignore") 
+
+
+
 # agent1=tk.Agent("agent1",
-#                 model=tm.Toy_Model_NE_1,
-#                 actor_network=tk.DDPGActor,
-#                 critic_network=tk.DDPGCritic,
-#                 reward_network=tk.Reward,
-#                 optimizer_policy=torch.optim.Adam,
-#                 optimizer_value=torch.optim.Adam,
-#                 optimizer_reward=torch.optim.Adam,
-#                 buffer=tk.Memory(max_size=100000),
-#                 observables=['agent1','agent2','S',"A","B"],
-#                 actions=['EX_A_sp1','EX_B_sp1'],
-#                 gamma=0.99,
-#                 update_batch_size=8,
-#                 lr_actor=0.000001,
+#                 model=tm.ToyModel_SA.copy(),
+#                 actor_network=tk.NN,
+#                 critic_network=tk.NN,
+#                 clip=0.1,
+#                 lr_actor=0.0001,
 #                 lr_critic=0.001,
+#                 grad_updates=5,
+#                 optimizer_actor=torch.optim.Adam,
+#                 optimizer_critic=torch.optim.Adam,
+#                 observables=['agent1', 'Glc', 'Starch'],
+#                 actions=["Amylase_Ex"],
+#                 gamma=1,
 #                 tau=0.1
 #                 )
 
-# agent2=tk.Agent("agent2",
-#                 model=tm.Toy_Model_NE_2,
-#                 actor_network=tk.DDPGActor,
-#                 critic_network=tk.DDPGCritic,
-#                 reward_network=tk.Reward,
-#                 optimizer_policy=torch.optim.Adam,
-#                 optimizer_value=torch.optim.Adam,
-#                 optimizer_reward=torch.optim.Adam,
-#                 observables=['agent1','agent2','S',"A","B"],
-#                 actions=['EX_A_sp2','EX_B_sp2'],
-#                 buffer=tk.Memory(max_size=100000),
-#                 gamma=0.99,
-#                 update_batch_size=8,
-#                 tau=0.1,
-#                 lr_actor=0.000001,
-#                 lr_critic=0.001
-# )
+# agents=[agent1]
 
-# agents=[agent1,agent2]
-
-# env=tk.Environment(name="Toy-NECOM",
+# env=tk.Environment(name="Toy-Exoenzyme",
 #                     agents=agents,
-#                     extracellular_reactions=[],
-#                     initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
-#                     inlet_conditions={"S":100},
-#                     max_c={'S':100,
+#                     dilution_rate=0.0001,
+#                     initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
+#                     inlet_conditions={"Starch":10},
+#                     extracellular_reactions=[{"reaction":{
+#                     "Glc":10,
+#                     "Starch":-0.1,},
+#                     "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
+#                     max_c={'Glc':100,
 #                            'agent1':10,  
-#                            'agent2':10,
-#                            'A':10,
-#                            'B':10,},
-#                            dt=0.05,dilution_rate=0.01)
-
-
-
-
-agent1=tk.Agent("agent1",
-                model=tm.ToyModel_SA.copy(),
-                actor_network=tk.NN,
-                critic_network=tk.NN,
-                clip=0.1,
-                lr_actor=0.0001,
-                lr_critic=0.001,
-                grad_updates=5,
-                optimizer_actor=torch.optim.Adam,
-                optimizer_critic=torch.optim.Adam,
-                observables=['agent1', 'Glc', 'Starch'],
-                actions=["Amylase_Ex"],
-                gamma=1,
-                tau=0.1
-                )
-
-agents=[agent1]
-
-env=tk.Environment(name="Toy-Exoenzyme",
-                    agents=agents,
-                    dilution_rate=0.0001,
-                    initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
-                    inlet_conditions={"Starch":10},
-                    extracellular_reactions=[{"reaction":{
-                    "Glc":10,
-                    "Starch":-0.1,},
-                    "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
-                    max_c={'Glc':100,
-                           'agent1':10,  
-                           'Starch':10,
-                           },
-                           dt=0.1,
-                           episode_time=100,
-                           number_of_batches=5000,
-                           episodes_per_batch=10,
-                           )
+#                            'Starch':10,
+#                            },
+#                            dt=0.1,
+#                            episode_time=100,
+#                            number_of_batches=5000,
+#                            episodes_per_batch=10,
+#                            )
 
 
 # for episode in range(env.number_of_episodes):
@@ -144,6 +94,55 @@ env=tk.Environment(name="Toy-Exoenzyme",
 #     for agent in env.agents:
 #         print(f"{agent.name} return is:  {torch.FloatTensor(env.returns[agent.name]).sum()}")
 
+agent1=tk.Agent("agent1",
+                model=tm.Toy_Model_NE_1,
+                actor_network=tk.NN,
+                critic_network=tk.NN,
+                clip=0.1,
+                lr_actor=0.0001,
+                lr_critic=0.001,
+                grad_updates=5,
+                optimizer_actor=torch.optim.Adam,
+                optimizer_critic=torch.optim.Adam,       
+                observables=['agent1','agent2','S',"A","B"],
+                actions=['EX_A_sp1','EX_B_sp1'],
+                gamma=1,
+                )
+
+agent2=tk.Agent("agent2",
+                model=tm.Toy_Model_NE_2,
+                actor_network=tk.NN,
+                critic_network=tk.NN,
+                clip=0.1,
+                lr_actor=0.0001,
+                lr_critic=0.001,
+                grad_updates=5,
+                optimizer_actor=torch.optim.Adam,
+                optimizer_critic=torch.optim.Adam,       
+                observables=['agent1','agent2','S',"A","B"],
+                actions=['EX_A_sp2','EX_B_sp2'],
+                gamma=1
+)
+
+agents=[agent1,agent2]
+
+env=tk.Environment(name="Toy-NECOM",
+                    agents=agents,
+                    dilution_rate=0.01,
+                    extracellular_reactions=[],
+                    initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
+                    inlet_conditions={"S":100},
+                    max_c={'S':100,
+                           'agent1':10,  
+                           'agent2':10,
+                           'A':10,
+                           'B':10,},
+                            dt=0.1,
+                            episode_time=100,
+                            number_of_batches=5000,
+                            episodes_per_batch=10,)
+
+
 env.rewards={agent.name:[] for agent in env.agents}
 
 if not os.path.exists(f"Results/{env.name}"):
@@ -181,10 +180,14 @@ for batch in range(env.number_of_batches):
 
 
     print(f"Batch {batch} finished:")
+    for agent in env.agents:
+        print(f"{agent.name} return is:  {env.rewards[agent.name][-10:]}")
+    plt.clt()
+    plt.cld()
+    plt.clf()
     for index_ag,agent in enumerate(env.agents):
-        plt.clt() # to clear the terminal
-        plt.cld()
-        plt.clf()
-        plt.scatter(env.rewards[agent.name])
+         # to clear the terminal
+        plt.scatter(env.rewards[agent.name],label=agent.name)
+
     plt.show()
 
