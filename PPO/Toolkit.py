@@ -461,7 +461,8 @@ def rollout(env):
                 batch_acts[ag.name].append(a[ind])
                 batch_log_probs[ag.name].append(ag.log_prob)
                 episode_rews[ag.name].append(r[ind])
-        env.rewards[ag.name].append(np.sum(episode_rews[ag.name]))
+        for ag in env.agents:
+            env.rewards[ag.name].append(np.sum(episode_rews[ag.name]))
         for ag in env.agents:
             batch_rews[ag.name].append(episode_rews[ag.name])
 
