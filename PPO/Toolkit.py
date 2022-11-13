@@ -166,7 +166,6 @@ class Environment:
             # l.backward()
             # self.agents[i].feasibility_optimizer_.step()
         # Handling the exchange reaction balances in the community
-        self.temp_actions=[[Sols[j].fluxes.iloc[i] for i in self.agents[i].actions] for j in range(len(self.agents))]
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
         
             for j in range(len(self.agents)):
@@ -472,6 +471,6 @@ def rollout(env):
         batch_obs[agent.name] = torch.tensor(batch_obs[agent.name], dtype=torch.float)
         batch_acts[agent.name] = torch.tensor(batch_acts[agent.name], dtype=torch.float)
         batch_log_probs[agent.name] = torch.tensor(batch_log_probs[agent.name], dtype=torch.float)
-        batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[ag.name]) 
+        batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name]) 
     return batch_obs,batch_acts, batch_log_probs, batch_rtgs
 
