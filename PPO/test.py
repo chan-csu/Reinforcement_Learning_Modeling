@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import warnings
 import json
 warnings.filterwarnings("ignore") 
-with open('Results/Toy-Exoenzyme/agent1_2000.pkl','rb') as f:
+with open('Results/Toy-NECOM_Facultative/agent1_1000.pkl','rb') as f:
     agent = pickle.load(f)
 
 agent.observables=['agent1', 'Glc', 'Starch']
