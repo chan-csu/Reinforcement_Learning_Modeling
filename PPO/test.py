@@ -16,34 +16,40 @@ import matplotlib.pyplot as plt
 import warnings
 import json
 warnings.filterwarnings("ignore") 
+agents=[]
 with open('Results/Toy-NECOM_Facultative/agent1_1000.pkl','rb') as f:
-    agent = pickle.load(f)
-
-agent.observables=['agent1', 'Glc', 'Starch']
-agents=[agent]
-
-env=tk.Environment(name="Toy-Exoenzyme",
+    agent1 = pickle.load(f)
+    agent1.observables=['agent1','agent2','S',"A","B"]
+    agents.append(agent1)
+with open('Results/Toy-NECOM_Facultative/agent2_1000.pkl','rb') as f:
+    agent2 = pickle.load(f)
+    agent2.observables=['agent1','agent2','S',"A","B"]
+    agents.append(agent2)
+env=tk.Environment(name="Toy-NECOM_Facultative",
                     agents=agents,
-                    dilution_rate=0.0001,
-                    initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
-                    inlet_conditions={"Starch":10},
-                    extracellular_reactions=[{"reaction":{
-                    "Glc":10,
-                    "Starch":-0.1,},
-                    "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
-                    max_c={'Glc':100,
+                    dilution_rate=0.01,
+                    extracellular_reactions=[],
+                    initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
+                    inlet_conditions={"S":100},
+                    max_c={'S':100,
                            'agent1':10,  
-                           'Starch':10,
-                           },
-                           dt=0.1,
-                           episode_time=100,
-                           number_of_batches=5000,
-                           episodes_per_batch=10,
-                           )
+                           'agent2':10,
+                           'A':10,
+                           'B':10,},
+                            dt=0.1,
+                            episode_time=100,
+                            number_of_batches=5000,
+                            episodes_per_batch=10,)
+
+
+
 
 env.reset()
 concs=[]
 for i in range(1000):
+    env.t=1000-i
+    for agent in env.agents:
+        agent.a,_=agent.get_actions(np.hstack([env.state[agent.observables],env.t]))
     s,_,a,_=env.step()
     concs.append(s)
 concs=pd.DataFrame(concs,columns=env.species)
