@@ -67,6 +67,7 @@ class Environment:
                 min_c:dict={},
                 max_c:dict={},
                 episodes_per_batch:int=10,
+                training:bool=True,
                 
                 
                 ) -> None:
@@ -80,6 +81,7 @@ class Environment:
         self.number_of_batches=number_of_batches
         self.batch_per_episode = batch_per_episode
         self.dilution_rate = dilution_rate
+        self.training=training
         self.mapping_matrix=self.resolve_exchanges()
         self.species=self.extract_species()
         self.resolve_extracellular_reactions(extracellular_reactions)
@@ -264,11 +266,12 @@ class Environment:
 
     def set_networks(self):
         """ Sets the networks for the agents in the environment."""
-        for agent in self.agents:
-            agent.actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
-            agent.critic_network_=agent.critic_network(len(agent.observables)+1,1)
-            agent.optimizer_value_ = agent.optimizer_critic(agent.critic_network_.parameters(), lr=agent.lr_critic)
-            agent.optimizer_policy_ = agent.optimizer_actor(agent.actor_network_.parameters(), lr=agent.lr_actor)
+        if self.training==True:
+            for agent in self.agents:
+                agent.actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
+                agent.critic_network_=agent.critic_network(len(agent.observables)+1,1)
+                agent.optimizer_value_ = agent.optimizer_critic(agent.critic_network_.parameters(), lr=agent.lr_critic)
+                agent.optimizer_policy_ = agent.optimizer_actor(agent.actor_network_.parameters(), lr=agent.lr_actor)
     
 class Agent:
     """ Any microbial agent will be an instance of this class.

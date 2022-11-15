@@ -126,7 +126,7 @@ agent2=tk.Agent("agent2",
 
 agents=[agent1,agent2]
 
-env=tk.Environment(name="Toy-NECOM_Facultative",
+env=tk.Environment(name="Toy-NECOM",
                     agents=agents,
                     dilution_rate=0.01,
                     extracellular_reactions=[],
