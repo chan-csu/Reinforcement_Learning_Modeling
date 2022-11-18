@@ -172,7 +172,7 @@ for batch in range(env.number_of_batches):
 			critic_loss.backward()
 			agent.optimizer_value_.step()                                                            
 	
-	if batch%1000==0:
+	if batch%200==0:
 		for agent in env.agents:
 			with open(f"Results/{env.name}/{agent.name}_{batch}.pkl", 'wb') as f:
 				pickle.dump(agent, f)
