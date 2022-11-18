@@ -326,13 +326,13 @@ Toy_Model_NE_2.Biomass_Ind=8
 
 
 if __name__ == '__main__':
-    print(ToyModel_SA.optimize().fluxes)
-    print(ToyModel_SA.optimize().status)
-    print(ToyModel_SA.exchanges)
-    print(ToyModel_SA.optimize().status)
-    print(Toy_Model_NE_1.optimize().fluxes)
-    print(Toy_Model_NE_1.optimize().status)
-    print(Toy_Model_NE_1.exchanges)
-    print(Toy_Model_NE_2.optimize().fluxes)
-    print(Toy_Model_NE_2.optimize().status)
-    print(Toy_Model_NE_2.exchanges)
+	print(ToyModel_SA.optimize().fluxes)
+	print(ToyModel_SA.optimize().status)
+	print(ToyModel_SA.exchanges)
+	print(ToyModel_SA.optimize().status)
+	print(Toy_Model_NE_1.optimize().fluxes)
+	print(Toy_Model_NE_1.optimize().status)
+	print(Toy_Model_NE_1.exchanges)
+	print(Toy_Model_NE_2.optimize().fluxes)
+	print(Toy_Model_NE_2.optimize().status)
+	print(Toy_Model_NE_2.exchanges)
