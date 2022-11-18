@@ -182,12 +182,12 @@ for batch in range(env.number_of_batches):
 	print(f"Batch {batch} finished:")
 	for agent in env.agents:
 		print(f"{agent.name} return is:  {env.rewards[agent.name][-10:]}")
-	plt.clt()
-	plt.cld()
-	plt.clf()
-	for index_ag,agent in enumerate(env.agents):
-		 # to clear the terminal
-		plt.scatter(env.rewards[agent.name],label=agent.name)
+	# plt.clt()
+	# plt.cld()
+	# plt.clf()
+	# for index_ag,agent in enumerate(env.agents):
+	# 	 # to clear the terminal
+	# 	plt.scatter(env.rewards[agent.name],label=agent.name)
 
-	plt.show()
+	# plt.show()
 
