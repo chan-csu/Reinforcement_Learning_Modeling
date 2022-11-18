@@ -1,5 +1,3 @@
-from mimetypes import init
-from turtle import color
 import Toolkit as tk
 import ToyModel as tm
 import torch

@@ -151,7 +151,7 @@ ToyModel_SA.Biomass_Ind=4
 
 ### S_Uptake ###
 Toy_Model_NE_1 = Model('Toy_1')
-                       
+					   
 EX_S_sp1 = Reaction('EX_S_sp1')
 S = Metabolite('S', compartment='c')
 EX_S_sp1.add_metabolites({S: -1})
