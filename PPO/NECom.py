@@ -16,6 +16,9 @@ import matplotlib.pyplot as plt
 import warnings
 import json
 import plotext as plt
+import multiprocessing as mp
+NUM_CORES = mp.cpu_count()
+print(f"{NUM_CORES} cores available: Each policy evaluation will\ncontain {NUM_CORES} Episode(s)")
 warnings.filterwarnings("ignore") 
 
 
@@ -140,7 +143,7 @@ env=tk.Environment(name="Toy-NECOM",
 							dt=0.1,
 							episode_time=100,
 							number_of_batches=5000,
-							episodes_per_batch=10,)
+							episodes_per_batch=NUM_CORES,)
 
 
 env.rewards={agent.name:[] for agent in env.agents}
@@ -168,6 +171,7 @@ for batch in range(env.number_of_batches):
 			agent.optimizer_value_.zero_grad()
 			critic_loss.backward()
 			agent.optimizer_value_.step()                                                            
+	
 	if batch%1000==0:
 		for agent in env.agents:
 			with open(f"Results/{env.name}/{agent.name}_{batch}.pkl", 'wb') as f:
@@ -182,12 +186,12 @@ for batch in range(env.number_of_batches):
 	print(f"Batch {batch} finished:")
 	for agent in env.agents:
 		print(f"{agent.name} return is:  {env.rewards[agent.name][-10:]}")
-	# plt.clt()
-	# plt.cld()
-	# plt.clf()
-	# for index_ag,agent in enumerate(env.agents):
-	# 	 # to clear the terminal
-	# 	plt.scatter(env.rewards[agent.name],label=agent.name)
+	plt.clt()
+	plt.cld()
+	plt.clf()
+	for index_ag,agent in enumerate(env.agents):
+		 # to clear the terminal
+		plt.scatter(env.rewards[agent.name],label=agent.name)
 
-	# plt.show()
+	plt.show()
 

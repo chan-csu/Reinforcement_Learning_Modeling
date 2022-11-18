@@ -439,34 +439,25 @@ def general_uptake(c):
     return 20*(c/(c+20))
 
 def rollout(env):
-    batch_obs = {key.name:[] for key in env.agents}
-    batch_acts = {key.name:[] for key in env.agents}
-    batch_log_probs = {key.name:[] for key in env.agents}
-    episode_rews = {key.name:[] for key in env.agents}
+    batch_obs={key.name:[] for key in env.agents}
+    batch_acts={key.name:[] for key in env.agents}
+    batch_log_probs={key.name:[] for key in env.agents}
     batch_rews = {key.name:[] for key in env.agents}
     batch_rtgs = {key.name:[] for key in env.agents}
+    batch=[]
     for ep in range(env.episodes_per_batch):
-        env.reset()
-        episode_rews = {key.name:[] for key in env.agents}
+        batch.append(run_episode.remote(env))
+    batch=ray.get(batch)
+    for ep in range(env.episodes_per_batch):
+        for ag in env.agents:
+            batch_obs[ag.name].extend(batch[ep][0][ag.name])
+            batch_acts[ag.name].extend(batch[ep][1][ag.name])
+            batch_log_probs[ag.name].extend(batch[ep][2][ag.name])
+            batch_rews[ag.name].append(batch[ep][3][ag.name])
+    batch
 
-        for step in range(env.episode_length):
-            episode_len=env.episode_length
-            env.t=episode_len-step
-            obs = env.state.copy()
-            for agent in env.agents:   
-                action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
-                agent.a=action
-                agent.log_prob=log_prob .detach()        
-            s,r,a,sp=env.step()
-            for ind,ag in enumerate(env.agents):
-                batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
-                batch_acts[ag.name].append(a[ind])
-                batch_log_probs[ag.name].append(ag.log_prob)
-                episode_rews[ag.name].append(r[ind])
-        for ag in env.agents:
-            env.rewards[ag.name].append(np.sum(episode_rews[ag.name]))
-        for ag in env.agents:
-            batch_rews[ag.name].append(episode_rews[ag.name])
+    for ag in env.agents:
+        env.rewards[ag.name].extend(list(np.sum(np.array(batch_rews[ag.name]),axis=1)))
 
     
     for agent in env.agents:
@@ -477,3 +468,26 @@ def rollout(env):
         batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name]) 
     return batch_obs,batch_acts, batch_log_probs, batch_rtgs
 
+@ray.remote
+def run_episode(env):
+    """ Runs a single episode of the environment. """
+    batch_obs = {key.name:[] for key in env.agents}
+    batch_acts = {key.name:[] for key in env.agents}
+    batch_log_probs = {key.name:[] for key in env.agents}
+    episode_rews = {key.name:[] for key in env.agents}
+    env.reset()
+    episode_len=env.episode_length
+    for ep in range(episode_len):
+        env.t=episode_len-ep
+        obs = env.state.copy()
+        for agent in env.agents:   
+            action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
+            agent.a=action
+            agent.log_prob=log_prob .detach()        
+        s,r,a,sp=env.step()
+        for ind,ag in enumerate(env.agents):
+            batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
+            batch_acts[ag.name].append(a[ind])
+            batch_log_probs[ag.name].append(ag.log_prob)
+            episode_rews[ag.name].append(r[ind])
+    return batch_obs,batch_acts, batch_log_probs, episode_rews
