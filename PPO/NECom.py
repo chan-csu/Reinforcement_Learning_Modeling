@@ -33,28 +33,14 @@ agent1=tk.Agent("agent1",
                 grad_updates=5,
                 optimizer_actor=torch.optim.Adam,
                 optimizer_critic=torch.optim.Adam,
-                observables=['agent1','agent2', 'Glc', 'Starch'],
-                actions=["Amylase_Ex"],
-                gamma=1,
-                tau=0.1
-                )
-agent2=tk.Agent("agent2",
-                model=tm.ToyModel_SA.copy(),
-                actor_network=tk.NN,
-                critic_network=tk.NN,
-                clip=0.1,
-                lr_actor=0.0001,
-                lr_critic=0.001,
-                grad_updates=5,
-                optimizer_actor=torch.optim.Adam,
-                optimizer_critic=torch.optim.Adam,
-                observables=['agent1','agent1', 'Glc', 'Starch'],
+                observables=['agent1', 'Glc', 'Starch'],
                 actions=["Amylase_Ex"],
                 gamma=1,
                 tau=0.1
                 )
 
-agents=[agent1, agent2]
+
+agents=[agent1]
 
 env=tk.Environment(name="Toy-Exoenzyme",
                     agents=agents,

@@ -62,6 +62,7 @@ class Environment:
                 batch_per_episode:int=1000,
                 number_of_batches:int=100,
                 dt:float=0.1,
+                constants:dict={},
                 episode_time:float=1000,
                 dilution_rate:float=0.05,
                 min_c:dict={},
@@ -76,6 +77,7 @@ class Environment:
         self.num_agents = len(agents)
         self.extracellular_reactions = extracellular_reactions
         self.dt = dt
+        self._constants = constants
         self.episode_length = int(episode_time/dt)
         self.episodes_per_batch=episodes_per_batch
         self.number_of_batches=number_of_batches
@@ -97,6 +99,7 @@ class Environment:
             self.max_c[self.species.index(key)]=value
         self.set_observables()
         self.set_networks()
+        self.resolve_constants()
         self.reset()
         print("Environment {} created successfully!.".format(self.name))
 
@@ -121,6 +124,21 @@ class Environment:
             warn("The following species are not in the community: {}".format(new_species))
             self.species.extend(new_species)
     
+    def resolve_constants(self)-> None:
+        """ Determines the index of compounds that are determined to be constant."""
+        if len(self._constants)>0:
+            self.constants={}
+            for key,value in self._constants.items():
+                if key in self.species:
+                    self.constants[self.species.index(key)]=value
+                else:
+                    warn("The following species is not in the community: {}".format(key))
+
+
+
+
+        
+    
     
     def reset(self):
         """ Resets the environment to its initial state."""
@@ -128,6 +146,8 @@ class Environment:
     
     def step(self):
         """ Performs a single step in the environment."""
+        for key,value in self.constants.items():
+            self.state[key]=value
         self.temp_actions=[]
         self.state[self.state<0]=0
         dCdt = np.zeros(self.state.shape)
@@ -181,11 +201,15 @@ class Environment:
         
         # Handling extracellular reactions
 
+
+
         for ex_reaction in self.extracellular_reactions:
             rate=ex_reaction["kinetics"][0](*[self.state[self.species.index(item)] for item in ex_reaction["kinetics"][1]])
             for metabolite in ex_reaction["reaction"].keys():
                 dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
         dCdt+=self.dilution_rate*(self.inlet_conditions-self.state)
+        for key,value in self.constants.items():
+            dCdt[key]=0
         C=self.state.copy()
         self.state += dCdt*self.dt
         Cp=self.state.copy()
