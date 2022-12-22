@@ -133,7 +133,8 @@ class Environment:
                     self.constants[self.species.index(key)]=value
                 else:
                     warn("The following species is not in the community: {}".format(key))
-
+        else:
+            self.constants=None
 
 
 
@@ -146,8 +147,9 @@ class Environment:
     
     def step(self):
         """ Performs a single step in the environment."""
-        for key,value in self.constants.items():
-            self.state[key]=value
+        if self.constants:
+            for key,value in self.constants.items():
+                self.state[key]=value
         self.temp_actions=[]
         self.state[self.state<0]=0
         dCdt = np.zeros(self.state.shape)
@@ -208,8 +210,10 @@ class Environment:
             for metabolite in ex_reaction["reaction"].keys():
                 dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
         dCdt+=self.dilution_rate*(self.inlet_conditions-self.state)
-        for key,value in self.constants.items():
-            dCdt[key]=0
+        
+        if self.constants:
+            for key,value in self.constants.items():
+                dCdt[key]=0
         C=self.state.copy()
         self.state += dCdt*self.dt
         Cp=self.state.copy()

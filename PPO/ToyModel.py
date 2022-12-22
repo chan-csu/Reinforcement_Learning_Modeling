@@ -194,11 +194,11 @@ R_1_sp1.upper_bound = 1000
 Toy_Model_NE_1.add_reaction(R_1_sp1)
 
 
-R_2_sp1 = Reaction('R_2_sp1')
-R_2_sp1.add_metabolites({ADP: 1, P: -1, B: 3, ATP: -1})
-R_2_sp1.lower_bound = 0
-R_2_sp1.upper_bound = 1000
-Toy_Model_NE_1.add_reaction(R_2_sp1)
+# R_2_sp1 = Reaction('R_2_sp1')
+# R_2_sp1.add_metabolites({ADP: 1, P: -1, B: 3, ATP: -1})
+# R_2_sp1.lower_bound = 0
+# R_2_sp1.upper_bound = 1000
+# Toy_Model_NE_1.add_reaction(R_2_sp1)
 
 
 R_3_sp1 = Reaction('R_3_sp1')
@@ -220,7 +220,7 @@ Toy_Model_NE_1.add_reaction(R_4_sp1)
 
 OBJ_sp1 = Reaction("OBJ_sp1")
 biomass_sp1 = Metabolite('biomass_sp1', compartment='c')
-OBJ_sp1.add_metabolites({ADP:5 ,ATP: -5,biomass_sp1:0.1,A:-1,B:-1})
+OBJ_sp1.add_metabolites({ADP:5 ,ATP: -5,biomass_sp1:0.1,A:-5,B:-5})
 OBJ_sp1.lower_bound = 0
 OBJ_sp1.upper_bound = 1000
 Toy_Model_NE_1.add_reaction(OBJ_sp1)
@@ -232,8 +232,7 @@ Biomass_1.upper_bound = 1000
 Toy_Model_NE_1.add_reaction(Biomass_1)
 
 Toy_Model_NE_1.objective='Biomass_1'
-Toy_Model_NE_1.Biomass_Ind=9
-
+Toy_Model_NE_1.Biomass_Ind=8
 
 ### ADP Production From Catabolism ###
 
@@ -290,11 +289,11 @@ R_2_sp2.upper_bound = 1000
 Toy_Model_NE_2.add_reaction(R_2_sp2)
 
 
-R_3_sp2 = Reaction('R_3_sp2')
-R_3_sp2.add_metabolites({ADP: 1, P: -1, A: 3, ATP: -1})
-R_3_sp2.lower_bound = 0
-R_3_sp2.upper_bound = 1000
-Toy_Model_NE_2.add_reaction(R_3_sp2)
+# R_3_sp2 = Reaction('R_3_sp2')
+# R_3_sp2.add_metabolites({ADP: 1, P: -1, A: 3, ATP: -1})
+# R_3_sp2.lower_bound = 0
+# R_3_sp2.upper_bound = 1000
+# Toy_Model_NE_2.add_reaction(R_3_sp2)
 
 
 
@@ -320,7 +319,7 @@ Biomass_2.lower_bound = 0
 Biomass_2.upper_bound = 1000
 Toy_Model_NE_2.add_reaction(Biomass_2)
 Toy_Model_NE_2.objective="Biomass_2"
-Toy_Model_NE_2.Biomass_Ind=9
+Toy_Model_NE_2.Biomass_Ind=8
 
 
 

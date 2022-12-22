@@ -105,7 +105,7 @@ agent1=tk.Agent("agent1",
 				clip=0.1,
 				lr_actor=0.0001,
 				lr_critic=0.001,
-				grad_updates=2,
+				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
 				optimizer_critic=torch.optim.Adam,       
 				observables=['agent1','agent2','S',"A","B"],
@@ -120,7 +120,7 @@ agent2=tk.Agent("agent2",
 				clip=0.1,
 				lr_actor=0.0001,
 				lr_critic=0.001,
-				grad_updates=2,
+				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
 				optimizer_critic=torch.optim.Adam,       
 				observables=['agent1','agent2','S',"A","B"],
@@ -130,13 +130,13 @@ agent2=tk.Agent("agent2",
 
 agents=[agent1,agent2]
 
-env=tk.Environment(name="Toy-NECOM_Host",
+env=tk.Environment(name="Toy-NECOM",
 					agents=agents,
-					dilution_rate=0.01,
+					dilution_rate=0.0001,
 					extracellular_reactions=[],
 					initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
 					inlet_conditions={"S":100},
-                                   constants={"A":50,"B":50},
+                    constants={},
 					max_c={'S':100,
 						   'agent1':10,  
 						   'agent2':10,
@@ -147,14 +147,14 @@ env=tk.Environment(name="Toy-NECOM_Host",
 							number_of_batches=5000,
 							episodes_per_batch=NUM_CORES,)
 
-with open(f"Results/Results/Toy-NECOM/agent1_600.pkl", 'rb') as f:
-       agent1 = pickle.load(f)
-       agent1.grad_updates=2
-with open(f"Results/Results/Toy-NECOM/agent2_600.pkl", 'rb') as f:
-       agent2 = pickle.load(f)
-       agent2.grad_updates=2
-agents=[agent1,agent2]
-env.agents=agents
+# with open(f"Results/Results/Toy-NECOM/agent1_600.pkl", 'rb') as f:
+#        agent1 = pickle.load(f)
+#        agent1.grad_updates=1
+# with open(f"Results/Results/Toy-NECOM/agent2_600.pkl", 'rb') as f:
+#        agent2 = pickle.load(f)
+#        agent2.grad_updates=1
+# agents=[agent1,agent2]
+# env.agents=agents
 
 
 env.rewards={agent.name:[] for agent in env.agents}

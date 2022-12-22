@@ -16,13 +16,13 @@ import json
 import plotly.express as px
 warnings.filterwarnings("ignore") 
 agents=[]
-with open(os.path.join('Results','Toy-NECOM_Host','agent1_1000.pkl'),'rb') as f:
+with open(os.path.join('Results','Toy-NECOM_Host','agent1_2800.pkl'),'rb') as f:
     agent1 = pickle.load(f)
     agent1.observables=['agent1','agent2','S',"A","B"]
     agent1.cov_var=torch.full(size=(len(agent1.actions),), fill_value=0.0001)
     agent1.cov_mat = torch.diag(agent1.cov_var)
     agents.append(agent1)
-with open(os.path.join('Results','Toy-NECOM_Host','agent2_1000.pkl'),'rb') as f:
+with open(os.path.join('Results','Toy-NECOM_Host','agent2_2800.pkl'),'rb') as f:
     agent2 = pickle.load(f)
     agent2.observables=['agent1','agent2','S',"A","B"]
     agent2.cov_var=torch.full(size=(len(agent2.actions),), fill_value=0.0001)
@@ -35,7 +35,7 @@ env=tk.Environment(name="Toy-NECOM_Facultative",
                     extracellular_reactions=[],
                     initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
                     inlet_conditions={"S":0},
-                    constants={"A":5,"B":5},
+                    constants={"A":50,"B":50},
                     max_c={'S':100,
                            'agent1':10,  
                            'agent2':10,
