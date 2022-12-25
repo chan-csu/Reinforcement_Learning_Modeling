@@ -15,7 +15,6 @@ import seaborn  as sns
 import matplotlib.pyplot as plt
 import warnings
 import json
-import plotext as plt
 import multiprocessing as mp
 NUM_CORES = mp.cpu_count()
 print(f"{NUM_CORES} cores available: Each policy evaluation will\ncontain {NUM_CORES} Episode(s)")
@@ -130,13 +129,13 @@ agent2=tk.Agent("agent2",
 
 agents=[agent1,agent2]
 
-env=tk.Environment(name="Toy-NECOM",
+env=tk.Environment(name="Toy-NECOM-host",
 					agents=agents,
 					dilution_rate=0.0001,
 					extracellular_reactions=[],
 					initial_condition={"S":100,"agent1":0.1,"agent2":0.1},
 					inlet_conditions={"S":100},
-                    constants={},
+                    constants={"A":2,"B":2},
 					max_c={'S':100,
 						   'agent1':10,  
 						   'agent2':10,
@@ -147,14 +146,14 @@ env=tk.Environment(name="Toy-NECOM",
 							number_of_batches=5000,
 							episodes_per_batch=NUM_CORES,)
 
-# with open(f"Results/Results/Toy-NECOM/agent1_600.pkl", 'rb') as f:
-#        agent1 = pickle.load(f)
-#        agent1.grad_updates=1
-# with open(f"Results/Results/Toy-NECOM/agent2_600.pkl", 'rb') as f:
-#        agent2 = pickle.load(f)
-#        agent2.grad_updates=1
-# agents=[agent1,agent2]
-# env.agents=agents
+with open(f"Results/Toy-NECOM/agent1_4000.pkl", 'rb') as f:
+       agent1 = pickle.load(f)
+       agent1.grad_updates=1
+with open(f"Results/Toy-NECOM/agent2_4000.pkl", 'rb') as f:
+       agent2 = pickle.load(f)
+       agent2.grad_updates=1
+agents=[agent1,agent2]
+env.agents=agents
 
 
 env.rewards={agent.name:[] for agent in env.agents}
