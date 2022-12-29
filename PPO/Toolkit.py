@@ -491,3 +491,26 @@ def run_episode(env):
             batch_log_probs[ag.name].append(ag.log_prob)
             episode_rews[ag.name].append(r[ind])
     return batch_obs,batch_acts, batch_log_probs, episode_rews
+
+def run_episode_single(env):
+    """ Runs a single episode of the environment. """
+    batch_obs = {key.name:[] for key in env.agents}
+    batch_acts = {key.name:[] for key in env.agents}
+    batch_log_probs = {key.name:[] for key in env.agents}
+    episode_rews = {key.name:[] for key in env.agents}
+    env.reset()
+    episode_len=env.episode_length
+    for ep in range(episode_len):
+        env.t=episode_len-ep
+        obs = env.state.copy()
+        for agent in env.agents:   
+            action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
+            agent.a=action
+            agent.log_prob=log_prob .detach()        
+        s,r,a,sp=env.step()
+        for ind,ag in enumerate(env.agents):
+            batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
+            batch_acts[ag.name].append(a[ind])
+            batch_log_probs[ag.name].append(ag.log_prob)
+            episode_rews[ag.name].append(r[ind])
+    return batch_obs,batch_acts, batch_log_probs, episode_rews

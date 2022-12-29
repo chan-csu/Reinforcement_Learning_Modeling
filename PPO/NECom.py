@@ -145,10 +145,10 @@ env=tk.Environment(name="Toy-NECOM-host",
 							number_of_batches=5000,
 							episodes_per_batch=NUM_CORES,)
 
-with open(f"Results/Toy-NECOM-host/Aux_Training/agent1_2200.pkl", 'rb') as f:
+with open(f"Results/Toy-NECOM-host/agent1_0.pkl", 'rb') as f:
        agent1 = pickle.load(f)
 
-with open(f"Results/Toy-NECOM-host/Aux_Training/agent2_2200.pkl", 'rb') as f:
+with open(f"Results/Toy-NECOM-host/agent2_0.pkl", 'rb') as f:
        agent2 = pickle.load(f)
 
 
