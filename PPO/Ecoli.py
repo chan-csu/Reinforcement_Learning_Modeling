@@ -17,10 +17,10 @@ import matplotlib.pyplot as plt
 import warnings
 import json
 import multiprocessing as mp
-model=cobra.io.read_sbml_model("iAF1260.xml")
-
+model_1=cobra.io.read_sbml_model("iAF1260.xml")
+model_1.remove_reactions()
 agent1=tk.Agent("agent1",
-				model=cobra.io.read_sbml_model("iAF1260.xml"),
+				model=,
 				actor_network=tk.NN,
 				critic_network=tk.NN,
 				clip=0.1,
