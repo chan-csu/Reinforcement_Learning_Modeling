@@ -147,8 +147,8 @@ for ko in unique_knockouts:
         inlet_conditions={},
         max_c={},
         dt=0.1,
-        episode_time=10,  ##TOBECHANGED
-        number_of_batches=20,  ##TOBECHANGED
+        episode_time=100,  ##TOBECHANGED
+        number_of_batches=2000,  ##TOBECHANGED
         episodes_per_batch=NUM_CORES,
     )
 
@@ -178,7 +178,7 @@ for ko in unique_knockouts:
                 agent.optimizer_value_.zero_grad()
                 critic_loss.backward()
                 agent.optimizer_value_.step()
-        if batch % 1 == 0:
+        if batch % 200 == 0:
             for agent in env.agents:
                 with open(f"Results/aa_ecoli/{env.name}/{agent.name}_{batch}.pkl", "wb") as f:
                     pickle.dump(agent, f)
@@ -189,3 +189,8 @@ for ko in unique_knockouts:
                 print(
                 f"{agent.name} return is:  {np.mean(env.rewards[agent.name][-env.episodes_per_batch:])}"
                 )
+        if batch==env.number_of_batches-1:
+            with open(f"Results/aa_ecoli/{env.name}/final_batch_obs.pkl", "wb") as f:
+                pickle.dump(batch_obs, f)
+            with open(f"Results/aa_ecoli/{env.name}/final_batch_acts.pkl", "wb") as f:
+                pickle.dump(batch_acts, f)
