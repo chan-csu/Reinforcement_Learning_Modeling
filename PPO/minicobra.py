@@ -17,13 +17,14 @@ class Model:
         self.reactionids=   [reaction.id for reaction in self.reactions]
         self.metaboliteids= [metabolite.id for metabolite in self.metabolites]
         self.empty_gb_model=gurobiModel()
+        self.Biomass_Ind=self.objective
 
 
     def remove_reactions(self,reactions):
         """Remove reactions from the model"""
         for reaction in reactions:
             self.reactions.remove(reaction)
-        self.update_stoichiometric_matrix()
+        
 
     
     def add_reactions(self,reactions):
@@ -67,13 +68,19 @@ class Model:
         model.optimize()
         return model
 
-    
+    @property
+    def exchanges(self):
+        """Return the exchange reactions"""
+        ex_rxn_inds=list(np.where(self.s.sum(axis=0)==-1)[0])
+        return([self.reactions[i] for i in ex_rxn_inds ])
 
 
+# class Solution:
+
+#     def __init__(self,model:Model):
+#         self.=model
+#         self._solution=model.optimize()
 
             
 
-if __name__=='__main__':
-    model=cobra.io.read_sbml_model("iAF1260.xml")
-    mini_model=Model(model.reactions,model.metabolites,"BIOMASS_Ec_iAF1260_core_59p81M")
-    sol=mini_model.optimize()
+

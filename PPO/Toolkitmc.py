@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from collections import deque,namedtuple
 from torch.distributions import MultivariateNormal
-
+import multiprocessing
 import ray
 import pandas as pd
 
@@ -127,6 +127,8 @@ class Environment:
         self.state = self.initial_condition.copy()
     
     def step(self):
+        from gurobipy import Model as gurobiModel
+        from gurobipy import GRB
         """ Performs a single step in the environment."""
         self.temp_actions=[]
         self.state[self.state<0]=0
@@ -153,17 +155,16 @@ class Environment:
 
 
             Sols[i] = self.agents[i].model.optimize()
-            print(Sols[i].objective_value)
             # self.agents[i].feasibility_optimizer_.zero_grad()
-            if Sols[i].status == 'infeasible':
+            if Sols[i].status != 2:
                 self.agents[i].reward=-1
                 dCdt[i] = 0
                 # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 # l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
             
             else:
-                dCdt[i] += Sols[i].objective_value*self.state[i]
-                self.agents[i].reward =Sols[i].objective_value*self.state[i]
+                dCdt[i] += Sols[i].ObjVal*self.state[i]
+                self.agents[i].reward =Sols[i].ObjVal*self.state[i]
                 # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 # l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
             # l.backward()
@@ -174,10 +175,10 @@ class Environment:
             for j in range(len(self.agents)):
 
                 if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
-                    if Sols[j].status == 'infeasible':
+                    if Sols[j].status != 2 :
                         dCdt[i+len(self.agents)] += 0
                     else:
-                        dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
+                        dCdt[i+len(self.agents)] += Sols[j].x[self.mapping_matrix["Mapping_Matrix"]
                                                     [i, j]]*self.state[j]
         
         # Handling extracellular reactions
@@ -215,12 +216,12 @@ class Environment:
 
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
             Sols[i] = self.agents[i].model.optimize()
-            if Sols[i].status == 'infeasible':
+            if Sols[i].status != 2 :
                 self.agents[i].reward= 0
                 dCdt[i] = 0
             else:
-                dCdt[i] += Sols[i].objective_value*C[i]
-                self.agents[i].reward =Sols[i].objective_value
+                dCdt[i] += Sols[i].ObjVal*C[i]
+                self.agents[i].reward =Sols[i].ObjVal
             
 
         # Handling the exchange reaction balances in the community  
@@ -228,7 +229,7 @@ class Environment:
         
             for j in range(len(self.agents)):   
                 if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
-                    if Sols[j].status == 'infeasible':
+                    if Sols[j].status != 2:
                         dCdt[i+len(self.agents)] += 0
                     else:
                         dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
@@ -445,11 +446,13 @@ def rollout(env):
     batch_log_probs={key.name:[] for key in env.agents}
     batch_rews = {key.name:[] for key in env.agents}
     batch_rtgs = {key.name:[] for key in env.agents}
-    batch=[]
-    for ep in range(env.episodes_per_batch):
-        batch.append(run_episode.remote(env))
-    batch=ray.get(batch)
-    for ep in range(env.episodes_per_batch):
+
+    # pool=multiprocessing.Pool(processes=env.episodes_per_batch)
+    # res=[pool.apply(run_episode,env) for i in range(env.episodes_per_batch)]
+    batch= [run_episode(env)]
+        
+    
+    for ep in range(len(batch)):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
             batch_acts[ag.name].extend(batch[ep][1][ag.name])
@@ -469,7 +472,6 @@ def rollout(env):
         batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name]) 
     return batch_obs,batch_acts, batch_log_probs, batch_rtgs
 
-@ray.remote
 def run_episode(env):
     """ Runs a single episode of the environment. """
     batch_obs = {key.name:[] for key in env.agents}

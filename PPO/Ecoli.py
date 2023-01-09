@@ -1,7 +1,5 @@
 import cobra
-from mimetypes import init
-from turtle import color
-import Toolkit as tk
+import Toolkitmc as tk
 import torch
 import torch.functional as F
 import torch.nn as nn
@@ -17,6 +15,7 @@ import warnings
 import json
 import multiprocessing as mp
 import rich
+import minicobra as mc
 
 
 NUM_CORES = mp.cpu_count()
@@ -93,7 +92,8 @@ for ko in unique_knockouts:
     model2 = model_base.copy()
     model1.remove_reactions(model1.genes.get_by_id(gene_ids[ko[0]]).reactions)
     model2.remove_reactions(model2.genes.get_by_id(gene_ids[ko[1]]).reactions)
-    
+    model1=mc.Model(reactions=model1.reactions,metabolites=model1.metabolites,objective="BIOMASS_Ec_iAF1260_core_59p81M")
+    model2=mc.Model(reactions=model2.reactions,metabolites=model2.metabolites,objective="BIOMASS_Ec_iAF1260_core_59p81M")
     ko_name = ko[0] + "_" + ko[1]
     agent1 = tk.Agent(
         "agent1",
@@ -180,9 +180,9 @@ for ko in unique_knockouts:
                 critic_loss.backward()
                 agent.optimizer_value_.step()
         if batch % 200 == 0:
-            for agent in env.agents:
-                with open(f"Results/aa_ecoli/{env.name}/{agent.name}_{batch}.pkl", "wb") as f:
-                    pickle.dump(agent, f)
+            # for agent in env.agents:
+            #     # with open(f"Results/aa_ecoli/{env.name}/{agent.name}_{batch}.pkl", "wb") as f:
+            #     #     pickle.dump(agent, f)
             with open(f"Results/aa_ecoli/{env.name}/returns_{batch}.json", "w") as f:
                 json.dump(env.rewards, f)
             print(f"Batch {batch} finished:")
