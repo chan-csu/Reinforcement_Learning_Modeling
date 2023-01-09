@@ -53,9 +53,22 @@ class Model:
     def lb(self):
         return np.array([reaction.lower_bound for reaction in self.reactions])
     
+    @lb.setter
+    def lb(self,value):
+        for i,reaction in enumerate(self.reactions):
+            if reaction.upper_bound<value[0,i]:
+                reaction.upper_bound=value[0,i]+0.000000001
+            reaction.lower_bound=value[0,i]
+
+    
     @property
     def ub(self):
         return np.array([reaction.upper_bound for reaction in self.reactions])
+    
+    @ub.setter
+    def ub(self,value):
+        for i,reaction in enumerate(self.reactions):
+            reaction.upper_bound=value[0,i]
 
     def optimize(self):
         """Optimize the model"""
