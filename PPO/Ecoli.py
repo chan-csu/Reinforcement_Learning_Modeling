@@ -18,6 +18,7 @@ import json
 import multiprocessing as mp
 import rich
 
+
 NUM_CORES = mp.cpu_count()
 
 warnings.filterwarnings("ignore")
@@ -89,7 +90,9 @@ ic['agent1']=0.5
 ic['agent2']=0.5
 for ko in unique_knockouts:
     model1 = model_base.copy()
+    model1.solver = 'scipy'
     model2 = model_base.copy()
+    model2.solver = 'scipy'
     model1.remove_reactions(model1.genes.get_by_id(gene_ids[ko[0]]).reactions)
     model1.Biomass_Ind = model1.reactions.index('BIOMASS_Ec_iAF1260_core_59p81M')
     model2.remove_reactions(model2.genes.get_by_id(gene_ids[ko[1]]).reactions)
@@ -158,6 +161,7 @@ for ko in unique_knockouts:
         os.makedirs(f"Results/aa_ecoli/{env.name}")
 
     for batch in range(env.number_of_batches):
+        rich.print(f"[green]Started batch: {batch}")
         batch_obs, batch_acts, batch_log_probs, batch_rtgs = tk.rollout(env)
         for agent in env.agents:
             V, _ = agent.evaluate(batch_obs[agent.name], batch_acts[agent.name])
