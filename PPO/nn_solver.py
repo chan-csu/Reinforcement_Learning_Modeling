@@ -63,8 +63,8 @@ def batch_generator(model:mc.Model,batch_size:int=64,scope:tuple[int,int]=(-100,
         feasible=np.zeros((batch_size,1))
         fluxes=np.zeros((batch_size,num_reactions))
         for i in range(batch_size):
-            lb_=np.random.uniform(scope[0],scope[1],(1,num_reactions))
-            ub_=np.random.uniform(lb_,scope[1],(1,num_reactions))
+            lb_=np.random.uniform(scope[0],scope[1],(num_reactions,))
+            ub_=np.random.uniform(lb_,scope[1],(num_reactions,))
             lb[i,:]=lb_
             ub[i,:]=ub_
             model.lb=lb_
@@ -110,9 +110,6 @@ if __name__=="__main__":
     while True:
         lb,ub,feasible=next(batch)
         print(counter)
-        if np.any(feasible==0):
-            print("Encountered infeasible problem")
-            print(feasible)
         counter+=1
     
     
