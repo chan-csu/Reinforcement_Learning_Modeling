@@ -63,7 +63,7 @@ def batch_generator(model:mc.Model,batch_size:int=64,scope:tuple[int,int]=(-100,
         feasible=np.zeros((batch_size,1))
         fluxes=np.zeros((batch_size,num_reactions))
         for i in range(batch_size):
-            lb_=model.lb+np.random.uniform(-1,1,(num_reactions,))*0.1
+            lb_=model.lb+np.random.uniform(-1,0,(num_reactions,))
             ub_=model.ub.copy()
             ub_[ub_<lb_]=lb_[ub_<lb_]+0.000001
             lb[i,:]=lb_.copy()

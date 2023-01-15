@@ -127,8 +127,6 @@ class Environment:
         self.state = self.initial_condition.copy()
     
     def step(self):
-        from gurobipy import Model as gurobiModel
-        from gurobipy import GRB
         """ Performs a single step in the environment."""
         self.temp_actions=[]
         self.state[self.state<0]=0
@@ -137,34 +135,34 @@ class Environment:
         for i,M in enumerate(self.agents):
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=100
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
+                    M.model.ub[self.mapping_matrix['Mapping_Matrix'][index,i]]=100
+                    M.model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
 
 
             for index,flux in enumerate(M.actions):
 
                 if M.a[index]<0:
                 
-                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],M.model.reactions[M.actions[index]].lower_bound)
+                    M.model.lb[M.actions[index]]=max(M.a[index],M.model.lb[M.actions[index]])
                     # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound
-
                 else:
-                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
+                    M.model.lb[M.actions[index]]= min(M.a[index],10)
                 
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
 
 
             Sols[i] = self.agents[i].model.optimize()
             # self.agents[i].feasibility_optimizer_.zero_grad()
-            if Sols[i].status != 2:
-                self.agents[i].reward=-1
-                dCdt[i] = 0
+            if Sols[i].status == 2:
+                dCdt[i] += Sols[i].ObjVal*self.state[i]
+                self.agents[i].reward =Sols[i].ObjVal*self.state[i]
                 # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 # l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
             
             else:
-                dCdt[i] += Sols[i].ObjVal*self.state[i]
-                self.agents[i].reward =Sols[i].ObjVal*self.state[i]
+                self.agents[i].reward=-1
+                dCdt[i] = 0
+                
                 # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
                 # l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
             # l.backward()

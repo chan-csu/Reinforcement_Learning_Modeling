@@ -18,8 +18,9 @@ class Model:
         self.metaboliteids= [metabolite.id for metabolite in self.metabolites]
         self.empty_gb_model=gurobiModel()
         self.Biomass_Ind=self.objective
-        self.lb=np.array([reaction.lower_bound for reaction in self.reactions])
-        self.ub=np.array([reaction.upper_bound for reaction in self.reactions])
+        self.lb=np.array([reaction.lower_bound for reaction in self.reactions],dtype="float32")
+        self.ub=np.array([reaction.upper_bound for reaction in self.reactions],dtype="float32")
+        self.s=self.s()
 
 
     def remove_reactions(self,reactions):
@@ -34,13 +35,14 @@ class Model:
         for reaction in reactions:
             self.reactions.append(reaction)
     
-    @cached_property
+    
     def s(self):
         """Update the stoichiometric matrix based on metabolites and reactions"""
         s=np.zeros((len(self.metabolites),len(self.reactions)))
         for i,reaction in enumerate(self.reactions):
             for metabolite in reaction.metabolites:
                 s[self.metabolites.index(metabolite),i]=reaction.metabolites[metabolite]
+        self.s=s
         return s
 
     @property
