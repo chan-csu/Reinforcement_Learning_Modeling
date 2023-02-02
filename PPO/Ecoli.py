@@ -1,5 +1,5 @@
 import cobra
-import Toolkitmc as tk
+import Toolkit as tk
 import torch
 import torch.functional as F
 import torch.nn as nn
@@ -15,8 +15,6 @@ import warnings
 import json
 import multiprocessing as mp
 import rich
-import minicobra as mc
-
 
 NUM_CORES = mp.cpu_count()
 
@@ -81,10 +79,10 @@ for i in combinations(knockouts_gene_names, 2):
 unique_knockouts = [tuple(i) for i in knockouts]
 
 ic={
-    key.lstrip("EX_"):val for key,val in model_base.medium.items() 
+    key.lstrip("EX_"):10000 for key,val in model_base.medium.items() 
 }
 
-ic['glc__D_e']=20
+ic['glc__D_e']=1000
 ic['agent1']=0.5
 ic['agent2']=0.5
 for ko in unique_knockouts:
@@ -92,8 +90,15 @@ for ko in unique_knockouts:
     model2 = model_base.copy()
     model1.remove_reactions(model1.genes.get_by_id(gene_ids[ko[0]]).reactions)
     model2.remove_reactions(model2.genes.get_by_id(gene_ids[ko[1]]).reactions)
-    model1=mc.Model(reactions=model1.reactions,metabolites=model1.metabolites,objective="BIOMASS_Ec_iAF1260_core_59p81M")
-    model2=mc.Model(reactions=model2.reactions,metabolites=model2.metabolites,objective="BIOMASS_Ec_iAF1260_core_59p81M")
+    model1.Biomass_Ind=model1.reactions.index("BIOMASS_Ec_iAF1260_core_59p81M")
+    model2.Biomass_Ind=model2.reactions.index("BIOMASS_Ec_iAF1260_core_59p81M")
+    model1.solver = "gurobi"
+    model2.solver = "gurobi"
+    if model1.optimize().objective_value != 0 or model2.optimize().objective_value != 0:
+        rich.print(f"[yellow]Skipping {ko} because at least one organism can grow without auxotrophy")
+        continue
+    else:
+        rich.print(f"[green]Non of the KOs can grow without auxotrophy: Running {ko}")
     ko_name = ko[0] + "_" + ko[1]
     agent1 = tk.Agent(
         "agent1",
@@ -110,10 +115,10 @@ for ko in unique_knockouts:
             "agent1",
             "agent2",
             "glc__D_e",
-            exchange_mets[i[0]],
-            exchange_mets[i[1]],
+            exchange_mets[ko[0]],
+            exchange_mets[ko[1]],
         ],
-        actions=[exchane_reactions[i[0]], exchane_reactions[i[1]]],
+        actions=[exchane_reactions[ko[0]], exchane_reactions[ko[1]]],
         gamma=1,
     )
     agent2 = tk.Agent(
@@ -131,10 +136,10 @@ for ko in unique_knockouts:
             "agent1",
             "agent2",
             "glc__D_e",
-            exchange_mets[i[0]],
-            exchange_mets[i[1]],
+            exchange_mets[ko[0]],
+            exchange_mets[ko[1]],
         ],
-        actions=[exchane_reactions[i[0]], exchane_reactions[i[1]]],
+        actions=[exchane_reactions[ko[0]], exchane_reactions[ko[1]]],
         gamma=1,
     )
 
@@ -146,8 +151,8 @@ for ko in unique_knockouts:
         initial_condition=ic,
         inlet_conditions={},
         max_c={},
-        dt=0.1,
-        episode_time=100,  ##TOBECHANGED
+        dt=0.5,
+        episode_time=20,  ##TOBECHANGED
         number_of_batches=2000,  ##TOBECHANGED
         episodes_per_batch=NUM_CORES,
     )
@@ -185,13 +190,15 @@ for ko in unique_knockouts:
             #     #     pickle.dump(agent, f)
             with open(f"Results/aa_ecoli/{env.name}/returns_{batch}.json", "w") as f:
                 json.dump(env.rewards, f)
-            print(f"Batch {batch} finished:")
-            for agent in env.agents:
-                print(
-                f"{agent.name} return is:  {np.mean(env.rewards[agent.name][-env.episodes_per_batch:])}"
-                )
-        if batch==env.number_of_batches-1:
             with open(f"Results/aa_ecoli/{env.name}/final_batch_obs.pkl", "wb") as f:
                 pickle.dump(batch_obs, f)
             with open(f"Results/aa_ecoli/{env.name}/final_batch_acts.pkl", "wb") as f:
                 pickle.dump(batch_acts, f)
+        
+        
+        print(f"Batch {batch} finished:")
+        for agent in env.agents:
+            print(
+            f"{agent.name} return is:  {np.mean(env.rewards[agent.name][-env.episodes_per_batch:])}"
+            )
+            

@@ -28,6 +28,9 @@ class NN(nn.Module):
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),)
         self.output=nn.Linear(hidden_dim,output_dim)
     
@@ -151,9 +154,7 @@ class Environment:
                 
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
 
-
             Sols[i] = self.agents[i].model.optimize()
-            print(Sols[i].objective_value)
             # self.agents[i].feasibility_optimizer_.zero_grad()
             if Sols[i].status == 'infeasible':
                 self.agents[i].reward=-1

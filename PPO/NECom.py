@@ -129,7 +129,7 @@ agent2=tk.Agent("agent2",
 
 agents=[agent1,agent2]
 
-env=tk.Environment(name="Toy-NECOM-host",
+env=tk.Environment(name="Toy-NECOM-cplex",
 					agents=agents,
 					dilution_rate=0.0001,
 					extracellular_reactions=[],
@@ -145,11 +145,11 @@ env=tk.Environment(name="Toy-NECOM-host",
 							number_of_batches=5000,
 							episodes_per_batch=NUM_CORES,)
 
-with open(f"Results/Toy-NECOM-host/agent1_0.pkl", 'rb') as f:
-       agent1 = pickle.load(f)
+# with open(f"Results/Toy-NECOM-host/agent1_0.pkl", 'rb') as f:
+#        agent1 = pickle.load(f)
 
-with open(f"Results/Toy-NECOM-host/agent2_0.pkl", 'rb') as f:
-       agent2 = pickle.load(f)
+# with open(f"Results/Toy-NECOM-host/agent2_0.pkl", 'rb') as f:
+#        agent2 = pickle.load(f)
 
 
 env.agents=[agent1,agent2]
@@ -159,6 +159,8 @@ env.rewards={agent.name:[] for agent in env.agents}
 if not os.path.exists(f"Results/{env.name}"):
 	os.makedirs(f"Results/{env.name}")
 
+for agent in env.agents:
+	agent.model.solver="gurobi"
 
 for batch in range(env.number_of_batches):
 	batch_obs,batch_acts, batch_log_probs, batch_rtgs=tk.rollout(env)
