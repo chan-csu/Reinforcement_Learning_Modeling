@@ -82,6 +82,8 @@ env.rewards={agent.name:[] for agent in env.agents}
 if not os.path.exists(f"Results/{env.name}"):
 	os.makedirs(f"Results/{env.name}")
 
+for agent in env.agents:
+    agent.model.solver="glpk"
 
 
 for batch in range(env.number_of_batches):

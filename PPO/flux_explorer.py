@@ -3,9 +3,12 @@ from scipy import linalg
 import torch
 import torch.nn as nn
 import cobra
+import pandas as pd
 from torch.distributions import MultivariateNormal
 import ray
 from warnings import warn
+
+DEVICE=torch.device('cpu')
 
 class NN(nn.Module):
     """
@@ -42,11 +45,15 @@ class Model:
     """This class is a substitute for cobra model. It is used to completely remove LP solver from the solution.
     This is well suited for RL as it makes the algorithm rely on matrix operations only and not rely on external solvers.
     """
-    def __init__(self, lb:torch.FloatTensor, ub:torch.FloatTensor,nullspace:torch.FloatTensor):
-        self.lb = lb
-        self.ub = ub
-        self.nullspace=nullspace
-        self.control=torch.rand(self.nullspace.shape[0])
+    def __init__(self, lb:torch.FloatTensor, ub:torch.FloatTensor,nullspace:torch.FloatTensor,primer:torch.FloatTensor=None):
+        self.lb = lb.to(DEVICE)
+        self.ub = ub.to(DEVICE)
+        self.nullspace=nullspace.to(DEVICE)
+        if primer is None:
+            self.control=torch.rand(self.nullspace.shape[0]).to(DEVICE)
+        else:
+            self.control=torch.FloatTensor([torch.dot(primer,self.nullspace[i,:])/torch.dot(self.nullspace[i,:],self.nullspace[i,:]) for i in range(self.nullspace.shape[0])]).to(DEVICE)
+
 
 def calculate_flux(model:Model):
     sol_raw=torch.matmul(model.control,model.nullspace)
@@ -54,13 +61,15 @@ def calculate_flux(model:Model):
     res=torch.sum(torch.abs(sols-sol_raw))
     return sols,res
 
-def parse_cobra_model(model:cobra.Model):
+def parse_cobra_model(model:cobra.Model,primer:pd.DataFrame=None):
     """This function takes a cobra model and returns a Model object.
     """
     lb = torch.FloatTensor([r.lower_bound for r in model.reactions])
     ub = torch.FloatTensor([r.upper_bound for r in model.reactions])
     nullspace = torch.FloatTensor(linalg.null_space(cobra.util.array.create_stoichiometric_matrix(model))).t()
-    return Model(lb,ub,nullspace)
+    if primer is not None:
+        primer=torch.FloatTensor(primer.fluxes.to_numpy()).to(DEVICE)
+    return Model(lb,ub,nullspace,primer)
 
 
 class Environment:
@@ -88,7 +97,6 @@ class Environment:
                 dilution_rate:float=0.05,
                 episodes_per_batch:int=10,
                 training:bool=True,
-                
                 
                 ) -> None:
         self.name=name
@@ -152,7 +160,7 @@ class Environment:
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
                     M._model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
-            M._model.control=torch.tensor(M.a)
+            M._model.control=torch.tensor(M.a).to(DEVICE)
             
             M.fluxes,M.res=calculate_flux(M._model)
             M.reward=torch.matmul(M.reward_vect,M.fluxes)-M.res
@@ -180,7 +188,7 @@ class Environment:
         C=self.state.copy()
         self.state += dCdt*self.dt
         Cp=self.state.copy()
-        return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
+        return C,list(i.reward.cpu() for i in self.agents),list(i.a for i in self.agents),Cp
 
 
     @ray.remote
@@ -275,6 +283,7 @@ class Agent:
                 model:cobra.Model,
                 actor_network:NN,
                 critic_network:NN,
+                prime_solution:pd.DataFrame,
                 optimizer_critic:torch.optim.Adam,
                 optimizer_actor:torch.optim.Adam,
                 reward_vect:np.ndarray,
@@ -292,7 +301,7 @@ class Agent:
 
         self.name = name
         self.model = model
-        self._model=parse_cobra_model(model)
+        self._model=parse_cobra_model(model,prime_solution)
         self.optimizer_critic = optimizer_critic
         self.optimizer_actor = optimizer_actor
         self.gamma = gamma
@@ -313,7 +322,7 @@ class Agent:
         self.actor_var=actor_var
         self.cov_var = torch.full(size=(self._model.control.shape), fill_value=0.1)
         self.cov_mat = torch.diag(self.cov_var)
-        self.reward_vect = reward_vect
+        self.reward_vect = reward_vect.to(DEVICE)
    
     def get_actions(self,observation:np.ndarray):
         """ 
@@ -381,7 +390,6 @@ def Build_Mapping_Matrix(Models:list[cobra.Model])->dict:
                 Mapping_Matrix[i, j] = -1
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
 
-
 def rollout(env):
     batch_obs={key.name:[] for key in env.agents}
     batch_acts={key.name:[] for key in env.agents}
@@ -390,8 +398,8 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        batch.append(run_episode_single(env))
-
+        batch.append(run_episode.remote(env))
+    batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
@@ -475,6 +483,5 @@ def general_uptake(c):
 
 
 if __name__ == "__main__":
-    cmodel = cobra.io.read_sbml_model("iAF1260.xml")
-    model = parse_cobra_model(cmodel)
-    print(calculate_flux(model))
+    cmodel=cobra.io.read_sbml_model("iAF1260.xml")
+    model=parse_cobra_model(cmodel)
