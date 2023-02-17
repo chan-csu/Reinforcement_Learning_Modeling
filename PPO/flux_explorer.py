@@ -8,7 +8,7 @@ from torch.distributions import MultivariateNormal
 import ray
 from warnings import warn
 
-DEVICE=torch.device('cpu')
+DEVICE=torch.device('cuda')
 
 class NN(nn.Module):
     """

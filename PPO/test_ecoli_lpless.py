@@ -94,6 +94,8 @@ for ko in unique_knockouts:
     Biomass_Ind2=model2.reactions.index("BIOMASS_Ec_iAF1260_core_59p81M")
     model1.Biomass_Ind=Biomass_Ind1
     model2.Biomass_Ind=Biomass_Ind2
+    model1.solver="glpk"
+    model2.solver="glpk"
     agent1_rew_vect=torch.zeros(len(model1.reactions),)
     agent2_rew_vect=torch.zeros(len(model2.reactions),)
     agent1_rew_vect[Biomass_Ind1]=1
@@ -176,7 +178,7 @@ for ko in unique_knockouts:
         while err>0.0001:
             agent.optimizer_policy_.zero_grad()
             control_act_net=agent.actor_network_(torch.FloatTensor(np.hstack([state[agent.observables],env.t])))
-            control_label=agent._model.control
+            control_label=agent._model.control.cpu()
             err=nn.MSELoss()(control_act_net,control_label)
             err.backward()
             agent.optimizer_policy_.step()
