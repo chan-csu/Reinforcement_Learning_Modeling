@@ -98,8 +98,6 @@ for ko in unique_knockouts:
     agent2_rew_vect=torch.zeros(len(model2.reactions),)
     agent1_rew_vect[Biomass_Ind1]=1
     agent2_rew_vect[Biomass_Ind2]=1
-    model1.solver = "glpk"
-    model2.solver = "glpk"
     sol1 = model1.optimize()
     sol2 = model2.optimize()
     if sol1.objective_value >0.000001 or sol2.objective_value> 0.00001:
@@ -160,10 +158,10 @@ for ko in unique_knockouts:
         extracellular_reactions=[],
         initial_condition=ic,
         inlet_conditions={},
-        dt=0.5,
+        dt=0.1,
         episode_time=20,  ##TOBECHANGED
         number_of_batches=2000,  ##TOBECHANGED
-        episodes_per_batch=NUM_CORES,
+        episodes_per_batch=8,
     )
 
     env.rewards = {agent.name: [] for agent in env.agents}
@@ -171,6 +169,18 @@ for ko in unique_knockouts:
     if not os.path.exists(f"Results/aa_ecoli/{env.name}"):
         os.makedirs(f"Results/aa_ecoli/{env.name}")
 
+    for agent in env.agents:
+        state=env.state.copy()
+        err=1
+        env.t=0
+        while err>0.0001:
+            agent.optimizer_policy_.zero_grad()
+            control_act_net=agent.actor_network_(torch.FloatTensor(np.hstack([state[agent.observables],env.t])))
+            control_label=agent._model.control
+            err=nn.MSELoss()(control_act_net,control_label)
+            err.backward()
+            agent.optimizer_policy_.step()
+            print(err)
     for batch in range(env.number_of_batches):
         rich.print(f"[green]Started batch: {batch}")
         batch_obs, batch_acts, batch_log_probs, batch_rtgs = tk.rollout(env)

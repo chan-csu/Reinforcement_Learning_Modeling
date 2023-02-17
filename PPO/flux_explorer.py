@@ -320,7 +320,7 @@ class Agent:
         self.actor_network = actor_network
         self.critic_network = critic_network
         self.actor_var=actor_var
-        self.cov_var = torch.full(size=(self._model.control.shape), fill_value=0.1)
+        self.cov_var = torch.full(size=(self._model.control.shape), fill_value=0.0001)
         self.cov_mat = torch.diag(self.cov_var)
         self.reward_vect = reward_vect.to(DEVICE)
    
@@ -398,8 +398,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        batch.append(run_episode.remote(env))
-    batch = ray.get(batch)
+        batch.append(run_episode_single(env))
+    #     batch.append(run_episode.remote(env))
+    # batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
@@ -460,7 +461,7 @@ def run_episode_single(env):
         for agent in env.agents:   
             action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
             agent.a=action.numpy()
-            agent.log_prob=log_prob .detach()        
+            agent.log_prob=log_prob.detach()        
         s,r,a,sp=env.step()
         for ind,ag in enumerate(env.agents):
             batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
