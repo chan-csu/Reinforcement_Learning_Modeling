@@ -19,15 +19,15 @@ import rich
 NUM_CORES = mp.cpu_count()
 
 warnings.filterwarnings("ignore")
-model_base = cobra.io.read_sbml_model("iAF1260.xml")
+model_base = cobra.io.read_sbml_model("iAF1260_trimmed.xml")
 medium = model_base.medium.copy()
 
 test_model = model_base.copy()
 knockouts_gene_names = [
     "serA",
     "glyA",
-    "cysE",
-    "metA",
+    # "cysE",
+    # "metA",
     "thrC",
     "ilvA",
     "trpC",
@@ -42,8 +42,8 @@ knockouts_gene_names = [
 exchane_reactions = {
     "serA": "EX_ser__L_e",
     "glyA": "EX_gly_e",
-    "cysE": "EX_cys__L_e",
-    "metA": "EX_met__L_e",
+    # "cysE": "EX_cys__L_e",
+    # "metA": "EX_met__L_e",
     "thrC": "EX_thr__L_e",
     "ilvA": "EX_ile__L_e",
     "trpC": "EX_trp__L_e",
@@ -151,10 +151,10 @@ for ko in unique_knockouts:
         initial_condition=ic,
         inlet_conditions={},
         max_c={},
-        dt=0.5,
-        episode_time=20,  ##TOBECHANGED
+        dt=2,
+        episode_time=5,  ##TOBECHANGED
         number_of_batches=2000,  ##TOBECHANGED
-        episodes_per_batch=NUM_CORES,
+        episodes_per_batch=1,
     )
 
     env.rewards = {agent.name: [] for agent in env.agents}

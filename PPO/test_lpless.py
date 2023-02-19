@@ -24,6 +24,14 @@ agent1_rew_vect=torch.zeros(len(tm.Toy_Model_NE_1.reactions),)
 agent1_rew_vect[tm.Toy_Model_NE_1.Biomass_Ind]=1
 agent2_rew_vect=torch.zeros(len(tm.Toy_Model_NE_2.reactions),)
 agent2_rew_vect[tm.Toy_Model_NE_2.Biomass_Ind]=1
+model1=tm.Toy_Model_NE_1
+model2=tm.Toy_Model_NE_2
+
+sol1=model1.optimize()
+sol2=model2.optimize()
+
+
+
 
 agent1=tk.Agent("agent1",
 				model=tm.Toy_Model_NE_1,
@@ -31,6 +39,7 @@ agent1=tk.Agent("agent1",
 				critic_network=tk.NN,
                 reward_vect=agent1_rew_vect,
 				clip=0.1,
+				prime_solution=sol1,
 				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
@@ -46,6 +55,7 @@ agent2=tk.Agent("agent2",
 				critic_network=tk.NN,
                 reward_vect=agent2_rew_vect,
 				clip=0.1,
+				prime_solution=sol2,
 				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,

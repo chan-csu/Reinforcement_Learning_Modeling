@@ -4,8 +4,9 @@ import torch
 import torch.nn as nn
 import cobra
 import pandas as pd
-from torch.distributions import MultivariateNormal
+from torch.distributions import MultivariateNormal,Normal
 import ray
+import time
 from warnings import warn
 
 DEVICE=torch.device('cpu')
@@ -154,17 +155,15 @@ class Environment:
         """ Performs a single step in the environment."""
         self.temp_actions=[]
         self.state[self.state<0]=0
-        dCdt=   np.zeros((len(self.species),))
+        dCdt=np.zeros((len(self.species),))
 
         for i,M in enumerate(self.agents):
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
                     M._model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
             M._model.control=torch.tensor(M.a).to(DEVICE)
-            
             M.fluxes,M.res=calculate_flux(M._model)
             M.reward=torch.matmul(M.reward_vect,M.fluxes)-M.res
-
             
 
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
@@ -329,16 +328,18 @@ class Agent:
         Gets the actions and their probabilities for the agent.
         """
         mean = self.actor_network_(torch.tensor(observation, dtype=torch.float32)).detach()
-        dist = MultivariateNormal(mean, self.cov_mat)
+        dist = Normal(mean, self.actor_var)
+        # dist=torch.distributions.Uniform(low=mean-0.001, high=mean+0.001)
         action = dist.sample()
-        log_prob = dist.log_prob(action)
-        return action.detach(), log_prob.detach()
+        log_prob =torch.sum(dist.log_prob(action))
+        return action.detach().numpy(), log_prob.detach().numpy()
    
     def evaluate(self, batch_obs,batch_acts):
         V = self.critic_network_(batch_obs).squeeze()
         mean = self.actor_network_(batch_obs)
-        dist = MultivariateNormal(mean, self.cov_mat)
-        log_probs = dist.log_prob(batch_acts)
+        dist = Normal(mean, self.actor_var)
+        # dist=torch.distributions.Uniform(low=mean-0.001, high=mean+0.001)
+        log_probs = torch.sum(dist.log_prob(batch_acts),dim=1)
         return V, log_probs 
     
     def compute_rtgs(self, batch_rews):
@@ -399,7 +400,7 @@ def rollout(env):
     batch=[]
     for ep in range(env.episodes_per_batch):
         batch.append(run_episode_single(env))
-    #     batch.append(run_episode.remote(env))
+        # batch.append(run_episode.remote(env))
     # batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
@@ -417,7 +418,7 @@ def rollout(env):
 
         batch_obs[agent.name] = torch.tensor(batch_obs[agent.name], dtype=torch.float)
         batch_acts[agent.name] = torch.tensor(batch_acts[agent.name], dtype=torch.float)
-        batch_log_probs[agent.name] = torch.tensor(batch_log_probs[agent.name], dtype=torch.float)
+        batch_log_probs[agent.name] = torch.tensor(np.array(batch_log_probs[agent.name]), dtype=torch.float)
         batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name]) 
     return batch_obs,batch_acts, batch_log_probs, batch_rtgs
 
@@ -435,8 +436,8 @@ def run_episode(env):
         obs = env.state.copy()
         for agent in env.agents:   
             action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
-            agent.a=action.numpy()
-            agent.log_prob=log_prob .detach()        
+            agent.a=action
+            agent.log_prob=log_prob
         s,r,a,sp=env.step()
         for ind,ag in enumerate(env.agents):
             batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
@@ -460,8 +461,8 @@ def run_episode_single(env):
         obs = env.state.copy()
         for agent in env.agents:   
             action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
-            agent.a=action.numpy()
-            agent.log_prob=log_prob.detach()        
+            agent.a=action
+            agent.log_prob=log_prob
         s,r,a,sp=env.step()
         for ind,ag in enumerate(env.agents):
             batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))

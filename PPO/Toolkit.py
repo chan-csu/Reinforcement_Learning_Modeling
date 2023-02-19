@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from collections import deque,namedtuple
 from torch.distributions import MultivariateNormal
-
+import time
 import ray
 import pandas as pd
 
@@ -153,7 +153,6 @@ class Environment:
                     M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
                 
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
-
             Sols[i] = self.agents[i].model.optimize()
             # self.agents[i].feasibility_optimizer_.zero_grad()
             if Sols[i].status == 'infeasible':
@@ -215,6 +214,7 @@ class Environment:
                     M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],20)
 
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
+            
             Sols[i] = self.agents[i].model.optimize()
             if Sols[i].status == 'infeasible':
                 self.agents[i].reward= 0
@@ -485,8 +485,11 @@ def run_episode(env):
         for agent in env.agents:   
             action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
             agent.a=action
-            agent.log_prob=log_prob .detach()        
+            agent.log_prob=log_prob.detach()  
+        start=time.time()      
         s,r,a,sp=env.step()
+        end=time.time()
+        print("Time taken for step: ",end-start)
         for ind,ag in enumerate(env.agents):
             batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
             batch_acts[ag.name].append(a[ind])

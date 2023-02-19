@@ -15,19 +15,21 @@ import warnings
 import json
 import multiprocessing as mp
 import rich
+from cobra.flux_analysis import flux_variability_analysis
 
 NUM_CORES = mp.cpu_count()
 
 warnings.filterwarnings("ignore")
-model_base = cobra.io.read_sbml_model("iAF1260.xml")
+model_base = cobra.io.read_sbml_model("iAF1260_trimmed.xml")
+model_base.solver = "gurobi"
 medium = model_base.medium.copy()
 
 test_model = model_base.copy()
 knockouts_gene_names = [
     "serA",
     "glyA",
-    "cysE",
-    "metA",
+    # "cysE",
+    # "metA",
     "thrC",
     "ilvA",
     "trpC",
@@ -42,8 +44,8 @@ knockouts_gene_names = [
 exchane_reactions = {
     "serA": "EX_ser__L_e",
     "glyA": "EX_gly_e",
-    "cysE": "EX_cys__L_e",
-    "metA": "EX_met__L_e",
+    # "cysE": "EX_cys__L_e",
+    # "metA": "EX_met__L_e",
     "thrC": "EX_thr__L_e",
     "ilvA": "EX_ile__L_e",
     "trpC": "EX_trp__L_e",
@@ -85,6 +87,7 @@ ic={
 ic['glc__D_e']=1000
 ic['agent1']=0.5
 ic['agent2']=0.5
+model_fake = model_base.copy()
 for ko in unique_knockouts:
     model1 = model_base.copy()
     model2 = model_base.copy()
@@ -100,6 +103,9 @@ for ko in unique_knockouts:
     agent2_rew_vect[Biomass_Ind2]=1
     sol1 = model1.optimize()
     sol2 = model2.optimize()
+    removed=[]
+    removed=sol1.fluxes[sol1.fluxes==0].shape[0]
+    print(f"Removed {removed} reactions from model1")
     if sol1.objective_value >0.000001 or sol2.objective_value> 0.00001:
         rich.print(f"[yellow]Skipping {ko} because at least one organism can grow without auxotrophy")
         continue
@@ -137,7 +143,7 @@ for ko in unique_knockouts:
         clip=0.1,
         lr_actor=0.00001,
         lr_critic=0.001,
-        grad_updates=1,
+        grad_updates=5,
         prime_solution=sol2,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
@@ -160,8 +166,8 @@ for ko in unique_knockouts:
         inlet_conditions={},
         dt=0.1,
         episode_time=20,  ##TOBECHANGED
-        number_of_batches=2000,  ##TOBECHANGED
-        episodes_per_batch=8,
+        number_of_batches=10000,  ##TOBECHANGED
+        episodes_per_batch=1,
     )
 
     env.rewards = {agent.name: [] for agent in env.agents}
@@ -169,18 +175,18 @@ for ko in unique_knockouts:
     if not os.path.exists(f"Results/aa_ecoli/{env.name}"):
         os.makedirs(f"Results/aa_ecoli/{env.name}")
 
-    for agent in env.agents:
-        state=env.state.copy()
-        err=1
-        env.t=0
-        while err>0.0001:
-            agent.optimizer_policy_.zero_grad()
-            control_act_net=agent.actor_network_(torch.FloatTensor(np.hstack([state[agent.observables],env.t])))
-            control_label=agent._model.control
-            err=nn.MSELoss()(control_act_net,control_label)
-            err.backward()
-            agent.optimizer_policy_.step()
-            print(err)
+    # for agent in env.agents:
+    #     state=env.state.copy()
+    #     err=1
+    #     env.t=0
+    #     while err>0.0001:
+    #         agent.optimizer_policy_.zero_grad()
+    #         control_act_net=agent.actor_network_(torch.FloatTensor(np.hstack([state[agent.observables],env.t])))
+    #         control_label=agent._model.control
+    #         err=nn.MSELoss()(control_act_net,control_label)
+    #         err.backward()
+    #         agent.optimizer_policy_.step()
+    #         print(err)
     for batch in range(env.number_of_batches):
         rich.print(f"[green]Started batch: {batch}")
         batch_obs, batch_acts, batch_log_probs, batch_rtgs = tk.rollout(env)
