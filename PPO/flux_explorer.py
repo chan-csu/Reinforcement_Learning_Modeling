@@ -9,7 +9,7 @@ import ray
 import time
 from warnings import warn
 
-DEVICE=torch.device('cpu')
+DEVICE=torch.device('cuda')
 
 class NN(nn.Module):
     """
