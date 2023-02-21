@@ -17,7 +17,7 @@ import multiprocessing as mp
 import rich
 from cobra.flux_analysis import flux_variability_analysis
 
-NUM_CORES = mp.cpu_count()
+NUM_CORES =2
 
 warnings.filterwarnings("ignore")
 model_base = cobra.io.read_sbml_model("iAF1260_trimmed.xml")
@@ -115,13 +115,13 @@ for ko in unique_knockouts:
     agent1 = tk.Agent(
         "agent1",
         model=model1,
-        prime_solution=sol1,
         actor_network=tk.NN,
         critic_network=tk.NN,
         reward_vect=agent1_rew_vect,
         clip=0.1,
         lr_actor=0.0001,
         lr_critic=0.001,
+        biomass_ind=Biomass_Ind1,
         grad_updates=1,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
@@ -142,9 +142,9 @@ for ko in unique_knockouts:
         critic_network=tk.NN,
         clip=0.1,
         lr_actor=0.0001,
+        biomass_ind=Biomass_Ind2,
         lr_critic=0.001,
         grad_updates=1,
-        prime_solution=sol2,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
         observables=[
@@ -189,7 +189,7 @@ for ko in unique_knockouts:
                 ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
                 surr1 = ratios * A_k.detach()
                 surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
-                surr3=tk.calculate_residual(agent._model,actions_)
+                surr3=tk.calculate_residual(agent.model,actions_)
                 actor_loss = (-torch.min(surr1, surr2)).mean()+surr3.mean()
                 critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
                 agent.optimizer_policy_.zero_grad()

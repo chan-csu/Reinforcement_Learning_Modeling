@@ -29,14 +29,6 @@ class NN(nn.Module):
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),)
         self.output=nn.Linear(hidden_dim,output_dim)
     
@@ -52,14 +44,16 @@ class Model:
     """This class is a substitute for cobra model. It is used to completely remove LP solver from the solution.
     This is well suited for RL as it makes the algorithm rely on matrix operations only and not rely on external solvers.
     """
-    def __init__(self, lb:torch.FloatTensor, ub:torch.FloatTensor,nullspace:torch.FloatTensor,primer:torch.FloatTensor=None):
+    def __init__(self,reactions:list[cobra.Reaction],metabolites:list[cobra.Metabolite], lb:torch.FloatTensor, ub:torch.FloatTensor,exchanges:tuple,nullspace:torch.FloatTensor,biomass_ind:int):
         self.lb = lb.to(DEVICE)
         self.ub = ub.to(DEVICE)
+        self.reactions=reactions
+        self.metabolites=metabolites
+        self.biomass_ind=biomass_ind
+        self.exchange_reactions=exchanges 
         self.nullspace=nullspace.to(DEVICE)
-        if primer is None:
-            self.control=torch.rand(self.nullspace.shape[0]).to(DEVICE)
-        else:
-            self.control=torch.FloatTensor([torch.dot(primer,self.nullspace[i,:])/torch.dot(self.nullspace[i,:],self.nullspace[i,:]) for i in range(self.nullspace.shape[0])]).to(DEVICE)
+        self.control=torch.zeros((self.nullspace.shape[0],1),device=DEVICE)
+
 
 
 def calculate_flux(model:Model):
@@ -74,15 +68,20 @@ def calculate_residual(model:Model,control:torch.FloatTensor):
     res=torch.sum(torch.abs(sols-sol_raw),dim=1)
     return res
 
-def parse_cobra_model(model:cobra.Model,primer:pd.DataFrame=None):
+def parse_cobra_model(model:cobra.Model,biomass_ind:int,null_space:np.ndarray=None):
     """This function takes a cobra model and returns a Model object.
     """
     lb = torch.FloatTensor([r.lower_bound for r in model.reactions])
     ub = torch.FloatTensor([r.upper_bound for r in model.reactions])
-    nullspace = torch.FloatTensor(linalg.null_space(cobra.util.array.create_stoichiometric_matrix(model))).t()
-    if primer is not None:
-        primer=torch.FloatTensor(primer.fluxes.to_numpy()).to(DEVICE)
-    return Model(lb,ub,nullspace,primer)
+    reactions=list(model.reactions)
+    metabolites=list(model.metabolites)
+    s=cobra.util.array.create_stoichiometric_matrix(model)
+    if null_space is None:
+        nullspace = torch.FloatTensor(linalg.null_space(s)).t()
+    else:
+        nullspace = torch.FloatTensor(null_space).t()
+    exchanges = tuple(np.where(np.sum(s!=0,axis=0)==1)[0])
+    return Model(reactions=reactions,metabolites=metabolites,lb=lb,ub=ub,nullspace=nullspace,exchanges=exchanges,biomass_ind=biomass_ind)
 
 
 class Environment:
@@ -172,9 +171,9 @@ class Environment:
         for i,M in enumerate(self.agents):
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
-                    M._model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
-            M._model.control=torch.tensor(M.a).to(DEVICE)
-            M.fluxes,M.res=calculate_flux(M._model)
+                    M.model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
+            M.model.control=torch.tensor(M.a).to(DEVICE)
+            M.fluxes,M.res=calculate_flux(M.model)
             M.reward=torch.matmul(M.reward_vect,M.fluxes)-M.res
             
 
@@ -278,7 +277,7 @@ class Environment:
         """ Sets the networks for the agents in the environment."""
         if self.training==True:
             for agent in self.agents:
-                agent.actor_network_=agent.actor_network(len(agent.observables)+1,agent._model.control.shape[0])
+                agent.actor_network_=agent.actor_network(len(agent.observables)+1,agent.model.control.shape[0])
                 agent.critic_network_=agent.critic_network(len(agent.observables)+1,1)
                 agent.optimizer_value_ = agent.optimizer_critic(agent.critic_network_.parameters(), lr=agent.lr_critic)
                 agent.optimizer_policy_ = agent.optimizer_actor(agent.actor_network_.parameters(), lr=agent.lr_actor)
@@ -294,25 +293,25 @@ class Agent:
                 model:cobra.Model,
                 actor_network:NN,
                 critic_network:NN,
-                prime_solution:pd.DataFrame,
                 optimizer_critic:torch.optim.Adam,
                 optimizer_actor:torch.optim.Adam,
                 reward_vect:np.ndarray,
                 observables:list[str],
                 gamma:float,
+                biomass_ind:int,
                 clip:float=0.01,
                 grad_updates:int=1,
                 actor_var:float=0.1,
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
                 lr_critic:float=0.001,
+                null_space:np.ndarray=None,
                 buffer_sample_size:int=500,
                 tau:float=0.001,
                 alpha:float=0.001) -> None:
 
         self.name = name
-        self.model = model
-        self._model=parse_cobra_model(model,prime_solution)
+        self.model = parse_cobra_model(model,null_space=null_space,biomass_ind=biomass_ind)
         self.optimizer_critic = optimizer_critic
         self.optimizer_actor = optimizer_actor
         self.gamma = gamma
@@ -331,8 +330,7 @@ class Agent:
         self.actor_network = actor_network
         self.critic_network = critic_network
         self.actor_var=actor_var
-        self.cov_var = torch.full(size=(self._model.control.shape), fill_value=0.0001)
-        self.cov_mat = torch.diag(self.cov_var)
+        self.biomass_ind=biomass_ind
         self.reward_vect = reward_vect.to(DEVICE)
    
     def get_actions(self,observation:np.ndarray):
@@ -370,37 +368,22 @@ class Agent:
         return batch_rtgs
 
 
-def Build_Mapping_Matrix(Models:list[cobra.Model])->dict:
+def Build_Mapping_Matrix(models:list[cobra.Model])->dict:
     """
     Given a list of COBRA model objects, this function will build a mapping matrix for all the exchange reactions.
 
     """
 
     Ex_sp = []
+    Ex_rxns = []
     Temp_Map={}
-    for model in Models:
-        
-        
-        if not hasattr(model,"Biomass_Ind"):
-            raise Exception("Models must have 'Biomass_Ind' attribute in order for the DFBA to work properly!")
-        
-        
-        for Ex_rxn in model.exchanges :
-            if Ex_rxn!=model.reactions[model.Biomass_Ind]:
-                if list(Ex_rxn.metabolites.keys())[0].id not in Ex_sp:
-                    Ex_sp.append(list(Ex_rxn.metabolites.keys())[0].id)
-                if list(Ex_rxn.metabolites.keys())[0].id in Temp_Map.keys():
-                   Temp_Map[list(Ex_rxn.metabolites.keys())[0].id][model]=Ex_rxn
-                else:
-                     Temp_Map[list(Ex_rxn.metabolites.keys())[0].id]={model:Ex_rxn}
+    for model in models:
+        Ex_rxns.extend([(model,list(model.reactions[rxn].metabolites)[0].id,rxn) for rxn in model.exchange_reactions if model.reactions[rxn].id.endswith("_e") and rxn!=model.biomass_ind])
+    Ex_sp=list(set([item[1] for item in Ex_rxns]))
+    Mapping_Matrix = np.full((len(Ex_sp), len(models)),-1, dtype=int)
+    for record in Ex_rxns:
+        Mapping_Matrix[Ex_sp.index(record[1]),models.index(record[0])]=record[2]
 
-    Mapping_Matrix = np.zeros((len(Ex_sp), len(Models)), dtype=int)
-    for i, id in enumerate(Ex_sp):
-        for j, model in enumerate(Models):
-            if model in Temp_Map[id].keys():
-                Mapping_Matrix[i, j] = model.reactions.index(Temp_Map[id][model].id)
-            else:
-                Mapping_Matrix[i, j] = -1
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
 
 def rollout(env):
