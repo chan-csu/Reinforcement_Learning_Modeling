@@ -21,7 +21,7 @@ NUM_CORES = mp.cpu_count()
 
 warnings.filterwarnings("ignore")
 model_base = cobra.io.read_sbml_model("iAF1260_trimmed.xml")
-model_base.solver = "gurobi"
+model_base.solver = "glpk"
 medium = model_base.medium.copy()
 
 test_model = model_base.copy()
@@ -120,7 +120,7 @@ for ko in unique_knockouts:
         critic_network=tk.NN,
         reward_vect=agent1_rew_vect,
         clip=0.1,
-        lr_actor=0.00001,
+        lr_actor=0.0001,
         lr_critic=0.001,
         grad_updates=1,
         optimizer_actor=torch.optim.Adam,
@@ -141,9 +141,9 @@ for ko in unique_knockouts:
         reward_vect=agent2_rew_vect,
         critic_network=tk.NN,
         clip=0.1,
-        lr_actor=0.00001,
+        lr_actor=0.0001,
         lr_critic=0.001,
-        grad_updates=5,
+        grad_updates=1,
         prime_solution=sol2,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
@@ -167,7 +167,7 @@ for ko in unique_knockouts:
         dt=0.1,
         episode_time=20,  ##TOBECHANGED
         number_of_batches=10000,  ##TOBECHANGED
-        episodes_per_batch=1,
+        episodes_per_batch=int(NUM_CORES/2),
     )
 
     env.rewards = {agent.name: [] for agent in env.agents}
@@ -175,33 +175,22 @@ for ko in unique_knockouts:
     if not os.path.exists(f"Results/aa_ecoli/{env.name}"):
         os.makedirs(f"Results/aa_ecoli/{env.name}")
 
-    # for agent in env.agents:
-    #     state=env.state.copy()
-    #     err=1
-    #     env.t=0
-    #     while err>0.0001:
-    #         agent.optimizer_policy_.zero_grad()
-    #         control_act_net=agent.actor_network_(torch.FloatTensor(np.hstack([state[agent.observables],env.t])))
-    #         control_label=agent._model.control
-    #         err=nn.MSELoss()(control_act_net,control_label)
-    #         err.backward()
-    #         agent.optimizer_policy_.step()
-    #         print(err)
     for batch in range(env.number_of_batches):
         rich.print(f"[green]Started batch: {batch}")
         batch_obs, batch_acts, batch_log_probs, batch_rtgs = tk.rollout(env)
         for agent in env.agents:
-            V, _ = agent.evaluate(batch_obs[agent.name], batch_acts[agent.name])
+            V, _ ,_= agent.evaluate(batch_obs[agent.name], batch_acts[agent.name])
             A_k = batch_rtgs[agent.name] - V.detach()
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5)
             for _ in range(agent.grad_updates):
-                V, curr_log_probs = agent.evaluate(
+                V, curr_log_probs,actions_ = agent.evaluate(
                     batch_obs[agent.name], batch_acts[agent.name]
                     )
                 ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
                 surr1 = ratios * A_k.detach()
                 surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
-                actor_loss = (-torch.min(surr1, surr2)).mean()
+                surr3=tk.calculate_residual(agent._model,actions_)
+                actor_loss = (-torch.min(surr1, surr2)).mean()+surr3.mean()
                 critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
                 agent.optimizer_policy_.zero_grad()
                 actor_loss.backward(retain_graph=False)

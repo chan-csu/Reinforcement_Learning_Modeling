@@ -9,16 +9,22 @@ import ray
 import time
 from warnings import warn
 
-DEVICE=torch.device('cuda')
+DEVICE=torch.device('cpu')
 
 class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.Tanh ):
+    def __init__(self,input_dim,output_dim,hidden_dim=32,activation=nn.Tanh ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -61,6 +67,12 @@ def calculate_flux(model:Model):
     sols=torch.clip(sol_raw,model.lb,model.ub)
     res=torch.sum(torch.abs(sols-sol_raw))
     return sols,res
+
+def calculate_residual(model:Model,control:torch.FloatTensor):
+    sol_raw=torch.matmul(control,model.nullspace)
+    sols=torch.clip(sol_raw,model.lb,model.ub)
+    res=torch.sum(torch.abs(sols-sol_raw),dim=1)
+    return res
 
 def parse_cobra_model(model:cobra.Model,primer:pd.DataFrame=None):
     """This function takes a cobra model and returns a Model object.
@@ -340,7 +352,7 @@ class Agent:
         dist = Normal(mean, self.actor_var)
         # dist=torch.distributions.Uniform(low=mean-0.001, high=mean+0.001)
         log_probs = torch.sum(dist.log_prob(batch_acts),dim=1)
-        return V, log_probs 
+        return V, log_probs , mean
     
     def compute_rtgs(self, batch_rews):
 
@@ -400,7 +412,7 @@ def rollout(env):
     batch=[]
     for ep in range(env.episodes_per_batch):
         batch.append(run_episode_single(env))
-        # batch.append(run_episode.remote(env))
+    #     batch.append(run_episode.remote(env))
     # batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:

@@ -74,9 +74,9 @@ env=tk.Environment(name="Toy-NECOM-lpless",
 					initial_condition={"S":100,"agent1":0.1,"agent2":0.1,"A":10,"B":10},
 					inlet_conditions={"S":100},
 							dt=0.1,
-							episode_time=50,
+							episode_time=20,
 							number_of_batches=5000,
-							episodes_per_batch=4,)
+							episodes_per_batch=int(NUM_CORES/2),)
 
 # with open(f"Results/Toy-NECOM-host/agent1_0.pkl", 'rb') as f:
 #        agent1 = pickle.load(f)

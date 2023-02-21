@@ -72,7 +72,7 @@ S = Metabolite('Glc', compartment='c')
 S_Uptake.add_metabolites({S: -1})
 S_Uptake.lower_bound = -20
 S_Uptake.upper_bound = 0
-ToyModel_SA.add_reaction(S_Uptake)
+ToyModel_SA.add_reactions([S_Uptake])
 
 ### ADP Production From Catabolism ###
 
@@ -83,7 +83,7 @@ S_x = Metabolite('S_x', compartment='c')
 ATP_Cat.add_metabolites({ADP: -1, S: -1, S_x: 1, ATP: 1})
 ATP_Cat.lower_bound = 0
 ATP_Cat.upper_bound = 1000
-ToyModel_SA.add_reaction(ATP_Cat)
+ToyModel_SA.add_reactions([ATP_Cat])
 
 ### ATP Maintenance ###
 
@@ -91,7 +91,7 @@ ATP_M = Reaction('ATP_M')
 ATP_M.add_metabolites({ATP: -1, ADP: 1})
 ATP_M.lower_bound = 1
 ATP_M.upper_bound = 100
-ToyModel_SA.add_reaction(ATP_M)
+ToyModel_SA.add_reactions([ATP_M])
 
 ### Biomass Production ###
 
@@ -100,7 +100,7 @@ X_Production = Reaction('X_Production')
 X_Production.add_metabolites({S_x: -1, ATP: -100, ADP: 100, X: 1})
 X_Production.lower_bound = 0
 X_Production.upper_bound = 1000
-ToyModel_SA.add_reaction(X_Production)
+ToyModel_SA.add_reactions([X_Production])
 
 ### Biomass Release ###
 
@@ -108,7 +108,7 @@ X_Release = Reaction('X_Ex')
 X_Release.add_metabolites({X: -1})
 X_Release.lower_bound = 0
 X_Release.upper_bound = 1000
-ToyModel_SA.add_reaction(X_Release)
+ToyModel_SA.add_reactions([X_Release])
 
 ### Metabolism stuff ###
 
@@ -117,7 +117,7 @@ P_Prod = Reaction('P_Prod')
 P_Prod.add_metabolites({S_x: -1, ATP: 1, ADP: -1, P: 0.1})
 P_Prod.lower_bound = 0
 P_Prod.upper_bound = 1000
-ToyModel_SA.add_reaction(P_Prod)
+ToyModel_SA.add_reactions([P_Prod])
 
 ### Product Release ###
 
@@ -125,7 +125,7 @@ P_out = Reaction('P_Ex')
 P_out.add_metabolites({P: -1})
 P_out.lower_bound = 0
 P_out.upper_bound = 1000
-ToyModel_SA.add_reaction(P_out)
+ToyModel_SA.add_reactions([P_out])
 ToyModel_SA.objective = 'X_Ex'
 
 ### Amylase Production ###
@@ -134,14 +134,14 @@ Amylase = Metabolite('Amylase', compartment='c')
 Amylase_Prod.add_metabolites({S_x: -1, ATP: -1, ADP: 1, Amylase: 0.1})
 Amylase_Prod.lower_bound = 0
 Amylase_Prod.upper_bound = 1000
-ToyModel_SA.add_reaction(Amylase_Prod)
+ToyModel_SA.add_reactions([Amylase_Prod])
 
 ### Amylase Exchange ###
 Amylase_Ex = Reaction('Amylase_Ex')
 Amylase_Ex.add_metabolites({Amylase: -1})
 Amylase_Ex.lower_bound = 0
 Amylase_Ex.upper_bound = 1000
-ToyModel_SA.add_reaction(Amylase_Ex)
+ToyModel_SA.add_reactions([Amylase_Ex])
 
 ToyModel_SA.Biomass_Ind=4
 
@@ -157,7 +157,7 @@ S = Metabolite('S', compartment='c')
 EX_S_sp1.add_metabolites({S: -1})
 EX_S_sp1.lower_bound = -10
 EX_S_sp1.upper_bound = 0
-Toy_Model_NE_1.add_reaction(EX_S_sp1)
+Toy_Model_NE_1.add_reactions([EX_S_sp1])
 
 
 EX_A_sp1 = Reaction('EX_A_sp1')
@@ -165,7 +165,7 @@ A = Metabolite('A', compartment='c')
 EX_A_sp1.add_metabolites({A: -1})
 EX_A_sp1.lower_bound = -100
 EX_A_sp1.upper_bound = 100
-Toy_Model_NE_1.add_reaction(EX_A_sp1)
+Toy_Model_NE_1.add_reactions([EX_A_sp1])
 
 
 EX_B_sp1 = Reaction('EX_B_sp1')
@@ -173,7 +173,7 @@ B = Metabolite('B', compartment='c')
 EX_B_sp1.add_metabolites({B: -1})
 EX_B_sp1.lower_bound = -100
 EX_B_sp1.upper_bound = 100
-Toy_Model_NE_1.add_reaction(EX_B_sp1)
+Toy_Model_NE_1.add_reactions([EX_B_sp1])
 
 
 
@@ -182,7 +182,7 @@ P = Metabolite('P', compartment='c')
 EX_P_sp1.add_metabolites({P:-1})
 EX_P_sp1.lower_bound = 0
 EX_P_sp1.upper_bound = 100
-Toy_Model_NE_1.add_reaction(EX_P_sp1)
+Toy_Model_NE_1.add_reactions([EX_P_sp1])
 
 
 R_1_sp1 = Reaction('R_1_sp1')
@@ -191,21 +191,21 @@ ATP = Metabolite('ATP', compartment='c')
 R_1_sp1.add_metabolites({ADP: -2, S: -1, P: 1, ATP: 2})
 R_1_sp1.lower_bound = 0
 R_1_sp1.upper_bound = 1000
-Toy_Model_NE_1.add_reaction(R_1_sp1)
+Toy_Model_NE_1.add_reactions([R_1_sp1])
 
 
 # R_2_sp1 = Reaction('R_2_sp1')
 # R_2_sp1.add_metabolites({ADP: 1, P: -1, B: 3, ATP: -1})
 # R_2_sp1.lower_bound = 0
 # R_2_sp1.upper_bound = 1000
-# Toy_Model_NE_1.add_reaction(R_2_sp1)
+# Toy_Model_NE_1.add_reactions([(R_2_sp1)
 
 
 R_3_sp1 = Reaction('R_3_sp1')
 R_3_sp1.add_metabolites({ADP: 3, P: -1, A: 1, ATP: -3})
 R_3_sp1.lower_bound = 0
 R_3_sp1.upper_bound = 1000
-Toy_Model_NE_1.add_reaction(R_3_sp1)
+Toy_Model_NE_1.add_reactions([R_3_sp1])
 
 
 
@@ -213,7 +213,7 @@ R_4_sp1 = Reaction('R_4_sp1')
 R_4_sp1.add_metabolites({ADP:1 ,ATP: -1})
 R_4_sp1.lower_bound = 0
 R_4_sp1.upper_bound = 1000
-Toy_Model_NE_1.add_reaction(R_4_sp1)
+Toy_Model_NE_1.add_reactions([R_4_sp1])
 
 
 
@@ -223,13 +223,13 @@ biomass_sp1 = Metabolite('biomass_sp1', compartment='c')
 OBJ_sp1.add_metabolites({ADP:5 ,ATP: -5,biomass_sp1:0.1,A:-5,B:-5})
 OBJ_sp1.lower_bound = 0
 OBJ_sp1.upper_bound = 1000
-Toy_Model_NE_1.add_reaction(OBJ_sp1)
+Toy_Model_NE_1.add_reactions([OBJ_sp1])
 
 Biomass_1 = Reaction("Biomass_1")
 Biomass_1.add_metabolites({biomass_sp1:-1})
 Biomass_1.lower_bound = 0
 Biomass_1.upper_bound = 1000
-Toy_Model_NE_1.add_reaction(Biomass_1)
+Toy_Model_NE_1.add_reactions([Biomass_1])
 
 Toy_Model_NE_1.objective='Biomass_1'
 Toy_Model_NE_1.Biomass_Ind=8
@@ -245,7 +245,7 @@ S = Metabolite('S', compartment='c')
 EX_S_sp2.add_metabolites({S: -1})
 EX_S_sp2.lower_bound = -10
 EX_S_sp2.upper_bound = 0
-Toy_Model_NE_2.add_reaction(EX_S_sp2)
+Toy_Model_NE_2.add_reactions([EX_S_sp2])
 
 
 EX_A_sp2 = Reaction('EX_A_sp2')
@@ -253,7 +253,7 @@ A = Metabolite('A', compartment='c')
 EX_A_sp2.add_metabolites({A: -1})
 EX_A_sp2.lower_bound = -100
 EX_A_sp2.upper_bound = 100
-Toy_Model_NE_2.add_reaction(EX_A_sp2)
+Toy_Model_NE_2.add_reactions([EX_A_sp2])
 
 
 EX_B_sp2 = Reaction('EX_B_sp2')
@@ -261,7 +261,7 @@ B = Metabolite('B', compartment='c')
 EX_B_sp2.add_metabolites({B: -1})
 EX_B_sp2.lower_bound = -100
 EX_B_sp2.upper_bound = 100
-Toy_Model_NE_2.add_reaction(EX_B_sp2)
+Toy_Model_NE_2.add_reactions([EX_B_sp2])
 
 
 
@@ -270,7 +270,7 @@ P = Metabolite('P', compartment='c')
 EX_P_sp2.add_metabolites({P:-1})
 EX_P_sp2.lower_bound = 0
 EX_P_sp2.upper_bound = 100
-Toy_Model_NE_2.add_reaction(EX_P_sp2)
+Toy_Model_NE_2.add_reactions([EX_P_sp2])
 
 
 R_1_sp2 = Reaction('R_1_sp2')
@@ -279,21 +279,21 @@ ATP = Metabolite('ATP', compartment='c')
 R_1_sp2.add_metabolites({ADP: -2, S: -1, P: 1, ATP: 2})
 R_1_sp2.lower_bound = 0
 R_1_sp2.upper_bound = 1000
-Toy_Model_NE_2.add_reaction(R_1_sp2)
+Toy_Model_NE_2.add_reactions([R_1_sp2])
 
 
 R_2_sp2 = Reaction('R_2_sp2')
 R_2_sp2.add_metabolites({ADP: 3, P: -1, B: 1, ATP: -3})
 R_2_sp2.lower_bound = 0
 R_2_sp2.upper_bound = 1000
-Toy_Model_NE_2.add_reaction(R_2_sp2)
+Toy_Model_NE_2.add_reactions([R_2_sp2])
 
 
 # R_3_sp2 = Reaction('R_3_sp2')
 # R_3_sp2.add_metabolites({ADP: 1, P: -1, A: 3, ATP: -1})
 # R_3_sp2.lower_bound = 0
 # R_3_sp2.upper_bound = 1000
-# Toy_Model_NE_2.add_reaction(R_3_sp2)
+# Toy_Model_NE_2.add_reactions([(R_3_sp2)
 
 
 
@@ -301,7 +301,7 @@ R_4_sp2 = Reaction('R_4_sp2')
 R_4_sp2.add_metabolites({ADP:1 ,ATP: -1})
 R_4_sp2.lower_bound = 0
 R_4_sp2.upper_bound = 1000
-Toy_Model_NE_2.add_reaction(R_4_sp2)
+Toy_Model_NE_2.add_reactions([R_4_sp2])
 
 
 
@@ -311,13 +311,13 @@ biomass_sp2 = Metabolite('biomass_sp2', compartment='c')
 OBJ_sp2.add_metabolites({ADP:5 ,ATP: -5,biomass_sp2:0.1,A:-1,B:-1})
 OBJ_sp2.lower_bound = 0
 OBJ_sp2.upper_bound = 1000
-Toy_Model_NE_2.add_reaction(OBJ_sp2)
+Toy_Model_NE_2.add_reactions([OBJ_sp2])
 
 Biomass_2 = Reaction("Biomass_2")
 Biomass_2.add_metabolites({biomass_sp2:-1})
 Biomass_2.lower_bound = 0
 Biomass_2.upper_bound = 1000
-Toy_Model_NE_2.add_reaction(Biomass_2)
+Toy_Model_NE_2.add_reactions([Biomass_2])
 Toy_Model_NE_2.objective="Biomass_2"
 Toy_Model_NE_2.Biomass_Ind=8
 
