@@ -6,6 +6,7 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import pickle
+import scipy as sc 
 import time
 import ray
 import os
@@ -17,10 +18,11 @@ import multiprocessing as mp
 import rich
 from cobra.flux_analysis import flux_variability_analysis
 
-NUM_CORES =2
+NUM_CORES =8
 
 warnings.filterwarnings("ignore")
-model_base = cobra.io.read_sbml_model("iAF1260_trimmed.xml")
+model_base = cobra.io.read_sbml_model("iML1515.xml")
+nullspace = np.array(sc.io.loadmat("null_iml.mat")['b'])
 model_base.solver = "glpk"
 medium = model_base.medium.copy()
 
@@ -91,10 +93,16 @@ model_fake = model_base.copy()
 for ko in unique_knockouts:
     model1 = model_base.copy()
     model2 = model_base.copy()
-    model1.remove_reactions(model1.genes.get_by_id(gene_ids[ko[0]]).reactions)
-    model2.remove_reactions(model2.genes.get_by_id(gene_ids[ko[1]]).reactions)
-    Biomass_Ind1=model1.reactions.index("BIOMASS_Ec_iAF1260_core_59p81M")
-    Biomass_Ind2=model2.reactions.index("BIOMASS_Ec_iAF1260_core_59p81M")
+    m1_rxns=model1.genes.get_by_id(gene_ids[ko[0]]).reactions
+    m2_rxns=model2.genes.get_by_id(gene_ids[ko[1]]).reactions
+    m1_rxn_index=[model1.reactions.index(i) for i in m1_rxns]
+    m2_rxn_index=[model2.reactions.index(i) for i in m2_rxns]
+    model1.remove_reactions(m1_rxns)
+    model2.remove_reactions(m2_rxns)
+    m1_nullspace=np.delete(nullspace,m1_rxn_index,axis=0)
+    m2_nullspace=np.delete(nullspace,m2_rxn_index,axis=0)
+    Biomass_Ind1=model1.reactions.index("BIOMASS_Ec_iML1515_core_75p37M")
+    Biomass_Ind2=model2.reactions.index("BIOMASS_Ec_iML1515_core_75p37M")
     model1.Biomass_Ind=Biomass_Ind1
     model2.Biomass_Ind=Biomass_Ind2
     agent1_rew_vect=torch.zeros(len(model1.reactions),)
@@ -103,9 +111,6 @@ for ko in unique_knockouts:
     agent2_rew_vect[Biomass_Ind2]=1
     sol1 = model1.optimize()
     sol2 = model2.optimize()
-    removed=[]
-    removed=sol1.fluxes[sol1.fluxes==0].shape[0]
-    print(f"Removed {removed} reactions from model1")
     if sol1.objective_value >0.000001 or sol2.objective_value> 0.00001:
         rich.print(f"[yellow]Skipping {ko} because at least one organism can grow without auxotrophy")
         continue
@@ -123,6 +128,7 @@ for ko in unique_knockouts:
         lr_critic=0.001,
         biomass_ind=Biomass_Ind1,
         grad_updates=1,
+        null_space=m1_nullspace,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
         observables=[
@@ -145,6 +151,7 @@ for ko in unique_knockouts:
         biomass_ind=Biomass_Ind2,
         lr_critic=0.001,
         grad_updates=1,
+        null_space=m2_nullspace,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
         observables=[
@@ -167,7 +174,7 @@ for ko in unique_knockouts:
         dt=0.1,
         episode_time=20,  ##TOBECHANGED
         number_of_batches=10000,  ##TOBECHANGED
-        episodes_per_batch=int(NUM_CORES/2),
+        episodes_per_batch=int(NUM_CORES),
     )
 
     env.rewards = {agent.name: [] for agent in env.agents}
@@ -189,7 +196,7 @@ for ko in unique_knockouts:
                 ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
                 surr1 = ratios * A_k.detach()
                 surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
-                surr3=tk.calculate_residual(agent.model,actions_)
+                surr3=tk.calculate_residual(agent.model,actions_)*1000
                 actor_loss = (-torch.min(surr1, surr2)).mean()+surr3.mean()
                 critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
                 agent.optimizer_policy_.zero_grad()
