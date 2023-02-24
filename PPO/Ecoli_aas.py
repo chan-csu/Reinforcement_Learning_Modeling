@@ -19,34 +19,26 @@ import rich
 NUM_CORES = mp.cpu_count()
 
 warnings.filterwarnings("ignore")
-model_base = cobra.io.read_sbml_model("iAF1260_trimmed.xml")
+model_base = cobra.io.read_sbml_model("iML1515.xml")
 medium = model_base.medium.copy()
-
-test_model = model_base.copy()
-knockouts_gene_names = [
-    "serA",
-    "glyA",
-    # "cysE",
-    # "metA",
-    "thrC",
-    "ilvA",
-    "trpC",
-    "pheA",
-    "tyrA",
-    "hisB",
-    "proA",
-    "argA",
-    "leuB",
-]
+agent1_ko=("trpC",)
+agent2_ko=("leuB","thrC","hisB","pheA")
+knockouts_gene_names=agent1_ko+agent2_ko
+unique_kos = ((agent1_ko[0],agent2_ko[i]) for i in range(1,len(agent2_ko)))
+gene_ids = {}
+for ko_gene in knockouts_gene_names:
+    for gene in model_base.genes:
+        if gene.name == ko_gene:
+            gene_ids[ko_gene] = gene.id
+            break
 
 exchane_reactions = {
     "serA": "EX_ser__L_e",
     "glyA": "EX_gly_e",
-    # "cysE": "EX_cys__L_e",
-    # "metA": "EX_met__L_e",
     "thrC": "EX_thr__L_e",
     "ilvA": "EX_ile__L_e",
     "trpC": "EX_trp__L_e",
+    "cysE": "EX_cys__L_e",
     "pheA": "EX_phe__L_e",
     "tyrA": "EX_tyr__L_e",
     "hisB": "EX_his__L_e",
@@ -58,40 +50,24 @@ exchane_reactions = {
 exchange_species = {}
 exchange_mets = {}
 for i in exchane_reactions.items():
-    exchange_mets[i[0]] = list(test_model.reactions.get_by_id(i[1]).metabolites.keys())[
+    exchange_mets[i[0]] = list(model_base.reactions.get_by_id(i[1]).metabolites.keys())[
         0
     ].id
-
-gene_ids = {}
-for ko_gene in knockouts_gene_names:
-    for gene in test_model.genes:
-        if gene.name == ko_gene:
-            gene_ids[ko_gene] = gene.id
-            break
-
-from itertools import combinations
-
-knockouts = set()
-for i in combinations(knockouts_gene_names, 2):
-    if set(i) not in knockouts:
-        knockouts.add(frozenset(i))
-
-unique_knockouts = [tuple(i) for i in knockouts]
 
 ic={
     key.lstrip("EX_"):10000 for key,val in model_base.medium.items() 
 }
-
 ic['glc__D_e']=200
 ic['agent1']=0.5
 ic['agent2']=0.5
-for ko in unique_knockouts:
+
+for ko in unique_kos:
     model1 = model_base.copy()
     model2 = model_base.copy()
     model1.remove_reactions(model1.genes.get_by_id(gene_ids[ko[0]]).reactions)
     model2.remove_reactions(model2.genes.get_by_id(gene_ids[ko[1]]).reactions)
-    model1.Biomass_Ind=model1.reactions.index("BIOMASS_Ec_iAF1260_core_59p81M")
-    model2.Biomass_Ind=model2.reactions.index("BIOMASS_Ec_iAF1260_core_59p81M")
+    model1.Biomass_Ind=model1.reactions.index("BIOMASS_Ec_iML1515_core_75p37M")
+    model2.Biomass_Ind=model2.reactions.index("BIOMASS_Ec_iML1515_core_75p37M")
     model1.solver = "gurobi"
     model2.solver = "gurobi"
     if model1.optimize().objective_value != 0 or model2.optimize().objective_value != 0:
@@ -106,7 +82,7 @@ for ko in unique_knockouts:
         actor_network=tk.NN,
         critic_network=tk.NN,
         clip=0.1,
-        lr_actor=0.00001,
+        lr_actor=0.0001,
         lr_critic=0.001,
         grad_updates=1,
         optimizer_actor=torch.optim.Adam,
@@ -127,7 +103,7 @@ for ko in unique_knockouts:
         actor_network=tk.NN,
         critic_network=tk.NN,
         clip=0.1,
-        lr_actor=0.00001,
+        lr_actor=0.0001,
         lr_critic=0.001,
         grad_updates=1,
         optimizer_actor=torch.optim.Adam,
@@ -144,17 +120,17 @@ for ko in unique_knockouts:
     )
 
     env = tk.Environment(
-        ko_name,
+        ko_name+"_pub",
         agents=[agent1, agent2],
         dilution_rate=0,
         extracellular_reactions=[],
         initial_condition=ic,
         inlet_conditions={},
         max_c={},
-        dt=2,
-        episode_time=5,  ##TOBECHANGED
+        dt=0.1,
+        episode_time=20,  ##TOBECHANGED
         number_of_batches=2000,  ##TOBECHANGED
-        episodes_per_batch=1,
+        episodes_per_batch=NUM_CORES,
     )
 
     env.rewards = {agent.name: [] for agent in env.agents}
@@ -184,16 +160,21 @@ for ko in unique_knockouts:
                 agent.optimizer_value_.zero_grad()
                 critic_loss.backward()
                 agent.optimizer_value_.step()
-        if batch % 200 == 0:
+        if batch % 1 == 0:
             # for agent in env.agents:
             #     # with open(f"Results/aa_ecoli/{env.name}/{agent.name}_{batch}.pkl", "wb") as f:
             #     #     pickle.dump(agent, f)
-            with open(f"Results/aa_ecoli/{env.name}/returns_{batch}.json", "w") as f:
-                json.dump(env.rewards, f)
-            with open(f"Results/aa_ecoli/{env.name}/final_batch_obs.pkl", "wb") as f:
+            pd.DataFrame(env.rewards).to_csv(f"Results/aa_ecoli/{env.name}/rewards.csv")
+
+            with open(f"Results/aa_ecoli/{env.name}/batch_obs_{batch}.pkl", "wb") as f:
                 pickle.dump(batch_obs, f)
-            with open(f"Results/aa_ecoli/{env.name}/final_batch_acts.pkl", "wb") as f:
+            with open(f"Results/aa_ecoli/{env.name}/batch_acts_{batch}.pkl", "wb") as f:
                 pickle.dump(batch_acts, f)
+        if batch == env.number_of_batches - 1:
+            with open(f"Results/aa_ecoli/{env.name}/final_env.pkl", "wb") as f:
+                pickle.dump(env, f)
+
+
         
         
         print(f"Batch {batch} finished:")

@@ -141,7 +141,8 @@ class Environment:
         self.resolve_extracellular_reactions(extracellular_reactions)
         self.initial_condition =np.zeros((len(self.species),))
         for key,value in initial_condition.items():
-            self.initial_condition[self.species.index(key)]=value
+            if key in self.species:
+                self.initial_condition[self.species.index(key)]=value
         self.inlet_conditions = np.zeros((len(self.species),))
         for key,value in inlet_conditions.items():
             self.inlet_conditions[self.species.index(key)]=value
@@ -189,6 +190,7 @@ class Environment:
             M.model.control=torch.tensor(M.a).to(DEVICE)
             M.fluxes,M.res=calculate_flux(M.model)
             M.reward=torch.matmul(M.reward_vect,M.fluxes)-M.res
+            # M.reward=torch.matmul(M.reward_vect,M.fluxes)
             
 
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
@@ -408,9 +410,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        # batch.append(run_episode_single(env))
-        batch.append(run_episode.remote(env))
-    batch = ray.get(batch)
+        batch.append(run_episode_single(env))
+    #     batch.append(run_episode.remote(env))
+    # batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
