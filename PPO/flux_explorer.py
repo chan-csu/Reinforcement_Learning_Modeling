@@ -15,7 +15,7 @@ class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=24,activation=nn.Tanh ):
+    def __init__(self,input_dim,output_dim,hidden_dim=24,activation=nn.ReLU ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -45,11 +45,13 @@ class NN(nn.Module):
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),)
         self.output=nn.Linear(hidden_dim,output_dim)
+        self.activation=nn.Sigmoid()
     
     def forward(self, obs):
         out=self.inlayer(obs)
         out=self.hidden(out)
         out=self.output(out)
+        out=self.activation(out)
         return out
 
 
@@ -67,20 +69,19 @@ class Model:
         self.exchange_reactions=exchanges 
         self.nullspace=nullspace.to(DEVICE)
         self.control=torch.zeros((self.nullspace.shape[0],1),device=DEVICE)
-
+        self.rhs=torch.matmul(torch.linalg.inv(torch.matmul(self.nullspace,self.nullspace.T)),self.nullspace)
 
 
 def calculate_flux(model:Model):
-    sol_raw=torch.matmul(model.control,model.nullspace)
+    alb=torch.matmul(model.rhs,model.lb)
+    aub=torch.matmul(model.rhs,model.ub)
+    model.control_=alb+model.control*(aub-alb)
+    sol_raw=torch.matmul(model.control_,model.nullspace)
     sols=torch.clip(sol_raw,model.lb,model.ub)
     res=torch.sum(torch.abs(sols-sol_raw))
     return sols,res
 
-def calculate_residual(model:Model,control:torch.FloatTensor):
-    sol_raw=torch.matmul(control,model.nullspace)
-    sols=torch.clip(sol_raw,model.lb,model.ub)
-    res=torch.sum(torch.abs(sols-sol_raw),dim=1)
-    return res
+
 
 def parse_cobra_model(model:cobra.Model,biomass_ind:int,null_space:np.ndarray=None):
     """This function takes a cobra model and returns a Model object.
@@ -187,9 +188,12 @@ class Environment:
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
                     M.model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
-            M.model.control=torch.tensor(M.a).to(DEVICE)
+            M.model.control=torch.tensor(M.a)
             M.fluxes,M.res=calculate_flux(M.model)
-            M.reward=torch.matmul(M.reward_vect,M.fluxes)-M.res
+            if M.res>1:
+                M.reward=-M.res
+            else:
+                M.reward=torch.matmul(M.reward_vect,M.fluxes)
             # M.reward=torch.matmul(M.reward_vect,M.fluxes)
             
 
