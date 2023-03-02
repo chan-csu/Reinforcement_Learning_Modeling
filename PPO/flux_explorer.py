@@ -15,21 +15,10 @@ class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=24,activation=nn.Tanh ):
+    def __init__(self,input_dim,output_dim,hidden_dim=24,activation=nn.ReLU ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -189,7 +178,12 @@ class Environment:
                     M.model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
             M.model.control=torch.tensor(M.a).to(DEVICE)
             M.fluxes,M.res=calculate_flux(M.model)
-            M.reward=torch.matmul(M.reward_vect,M.fluxes)-M.res
+
+            if M.res>0.001:
+                M.reward=-M.res
+                M.fluxes=torch.zeros_like(M.fluxes)
+            else:
+                M.reward=torch.matmul(M.reward_vect,M.fluxes)
             # M.reward=torch.matmul(M.reward_vect,M.fluxes)
             
 
@@ -252,10 +246,8 @@ class Environment:
         
             for j in range(len(self.agents)):   
                 if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
-                    if Sols[j].status == 'infeasible':
-                        dCdt[i+len(self.agents)] += 0
-                    else:
-                        dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
+
+                    dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
                                                     [i, j]]*C[j]
 
         for ex_reaction in self.extracellular_reactions:
@@ -410,9 +402,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        batch.append(run_episode_single(env))
-    #     batch.append(run_episode.remote(env))
-    # batch = ray.get(batch)
+        # batch.append(run_episode_single(env))
+        batch.append(run_episode.remote(env))
+    batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])

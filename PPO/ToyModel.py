@@ -67,7 +67,7 @@ ToyModel_SA = Model('Toy_Model')
 
 ### S_Uptake ###
 
-S_Uptake = Reaction('Glc_Ex')
+S_Uptake = Reaction('Glc_e')
 S = Metabolite('Glc', compartment='c')
 S_Uptake.add_metabolites({S: -1})
 S_Uptake.lower_bound = -20
@@ -121,7 +121,7 @@ ToyModel_SA.add_reactions([P_Prod])
 
 ### Product Release ###
 
-P_out = Reaction('P_Ex')
+P_out = Reaction('P_e')
 P_out.add_metabolites({P: -1})
 P_out.lower_bound = 0
 P_out.upper_bound = 1000
@@ -137,7 +137,7 @@ Amylase_Prod.upper_bound = 1000
 ToyModel_SA.add_reactions([Amylase_Prod])
 
 ### Amylase Exchange ###
-Amylase_Ex = Reaction('Amylase_Ex')
+Amylase_Ex = Reaction('Amylase_e')
 Amylase_Ex.add_metabolites({Amylase: -1})
 Amylase_Ex.lower_bound = 0
 Amylase_Ex.upper_bound = 1000

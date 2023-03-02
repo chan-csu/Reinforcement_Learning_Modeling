@@ -16,67 +16,66 @@ import matplotlib.pyplot as plt
 import warnings
 import json
 import multiprocessing as mp
-NUM_CORES = mp.cpu_count()
+NUM_CORES = 8
 print(f"{NUM_CORES} cores available: Each policy evaluation will\ncontain {NUM_CORES} Episode(s)")
 warnings.filterwarnings("ignore") 
 
-agent1_rew_vect=torch.zeros(len(tm.Toy_Model_NE_1.reactions),)
-agent1_rew_vect[tm.Toy_Model_NE_1.Biomass_Ind]=1
-agent2_rew_vect=torch.zeros(len(tm.Toy_Model_NE_2.reactions),)
-agent2_rew_vect[tm.Toy_Model_NE_2.Biomass_Ind]=1
-model1=tm.Toy_Model_NE_1
-model2=tm.Toy_Model_NE_2
+agent1_rew_vect=torch.zeros(len(tm.ToyModel_SA.reactions),)
+agent1_rew_vect[tm.ToyModel_SA.Biomass_Ind]=1
+model1=tm.ToyModel_SA.copy()
+# model2=tm.ToyModel_SA.copy()
 
-sol1=model1.optimize()
-sol2=model2.optimize()
 
 
 
 
 agent1=tk.Agent("agent1",
-				model=tm.Toy_Model_NE_1,
+				model=model1,
 				actor_network=tk.NN,
 				critic_network=tk.NN,
                 reward_vect=agent1_rew_vect,
-				clip=0.1,
-				prime_solution=sol1,
+				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
+				clip=0.05,
 				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
 				optimizer_critic=torch.optim.Adam,       
-				observables=['agent1','agent2','S',"A","B"],
-				gamma=1,
+				observables=['agent1', 'Glc', 'Starch'],
+				gamma=0.1,
 				)
 
-agent2=tk.Agent("agent2",
-				model=tm.Toy_Model_NE_2,
-				actor_network=tk.NN,
-				critic_network=tk.NN,
-                reward_vect=agent2_rew_vect,
-				clip=0.1,
-				prime_solution=sol2,
-				lr_actor=0.0001,
-				lr_critic=0.001,
-				grad_updates=1,
-				optimizer_actor=torch.optim.Adam,
-				optimizer_critic=torch.optim.Adam,       
-				observables=['agent1','agent2','S',"A","B"],
-				gamma=1
-)
+# agent2=tk.Agent("agent2",
+# 				model=tm.Toy_Model_NE_2,
+# 				actor_network=tk.NN,
+# 				critic_network=tk.NN,
+# 				biomass_ind=tm.Toy_Model_NE_2.Biomass_Ind,
+#                 reward_vect=agent2_rew_vect,
+# 				clip=0.1,
+# 				lr_actor=0.0001,
+# 				lr_critic=0.001,
+# 				grad_updates=1,
+# 				optimizer_actor=torch.optim.Adam,
+# 				optimizer_critic=torch.optim.Adam,       
+# 				observables=['agent1','agent2','S',"A","B"],
+# 				gamma=1
+# )
 
-agents=[agent1,agent2]
+agents=[agent1]
 
-env=tk.Environment(name="Toy-NECOM-lpless",
+env=tk.Environment(name="Toy-NECOM-lpless_single_0.1",
 					agents=agents,
 					dilution_rate=0.0001,
-					extracellular_reactions=[],
-					initial_condition={"S":100,"agent1":0.1,"agent2":0.1,"A":10,"B":10},
-					inlet_conditions={"S":100},
+					initial_condition={"Glc":100,"agent1":0.1},
+					inlet_conditions={"Glc":100},
+                    extracellular_reactions=[{"reaction":{
+                     "Glc":10,
+                     "Starch":-0.1,},
+                     "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
 							dt=0.1,
 							episode_time=20,
-							number_of_batches=5000,
-							episodes_per_batch=int(NUM_CORES/2),)
+							number_of_batches=10000,
+							episodes_per_batch=NUM_CORES,)
 
 # with open(f"Results/Toy-NECOM-host/agent1_0.pkl", 'rb') as f:
 #        agent1 = pickle.load(f)
@@ -85,7 +84,7 @@ env=tk.Environment(name="Toy-NECOM-lpless",
 #        agent2 = pickle.load(f)
 
 
-env.agents=[agent1,agent2]
+env.agents=[agent1]
 
 env.rewards={agent.name:[] for agent in env.agents}
 
@@ -99,11 +98,11 @@ for agent in env.agents:
 for batch in range(env.number_of_batches):
 	batch_obs,batch_acts, batch_log_probs, batch_rtgs=tk.rollout(env)
 	for agent in env.agents:
-		V, _= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
+		V, _,mean= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
 		A_k = batch_rtgs[agent.name] - V.detach()   
 		A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5) 
 		for _ in range(agent.grad_updates):                                                      
-			V, curr_log_probs = agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
+			V, curr_log_probs,mean = agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
 			ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
 			surr1 = ratios * A_k.detach()
 			surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
@@ -116,10 +115,17 @@ for batch in range(env.number_of_batches):
 			critic_loss.backward()
 			agent.optimizer_value_.step()                                                            
 	
-	if batch%200==0:
-		for agent in env.agents:
-			with open(f"Results/{env.name}/{agent.name}_{batch}.pkl", 'wb') as f:
-				pickle.dump(agent, f)
+	if batch%500==0:
+		
+		with open(f"Results/{env.name}/{env.name}_{batch}.pkl", 'wb') as f:
+			pickle.dump(env, f)
+		with open(f"Results/{env.name}/observations_{batch}.pkl", 'wb') as f:
+			pickle.dump(batch_obs, f)
+		
+		with open(f"Results/{env.name}/actions_{batch}.pkl", 'wb') as f:
+			pickle.dump(batch_acts, f)
+	
+		
 		# with open(f"Results/{env.name}/returns_{batch}.json", 'w') as f:
 		# 	json.dump(env.rewards, f)
 
