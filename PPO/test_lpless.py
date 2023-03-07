@@ -17,7 +17,7 @@ import warnings
 import json
 import multiprocessing as mp
 import copy
-NUM_CORES = 12
+NUM_CORES = 8
 print(f"{NUM_CORES} cores available: Each policy evaluation will\ncontain {NUM_CORES} Episode(s)")
 warnings.filterwarnings("ignore") 
 
@@ -45,13 +45,13 @@ agent1=tk.Agent("agent1",
 				critic_network=tk.NN,
                 reward_vect=agent1_rew_vect,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
 				optimizer_critic=torch.optim.Adam,       
-				observables=['agent1','agent2','agent3','agent4','agent5','agent6','agent7','agent8','agent9','agent10','Glc',"Starch"],
+				observables=['agent1','Glc',"Starch"],
 				gamma=1
 				,
 				)
@@ -62,8 +62,8 @@ agent2=tk.Agent("agent2",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -78,8 +78,8 @@ agent3=tk.Agent("agent3",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -94,8 +94,8 @@ agent4=tk.Agent("agent4",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -110,8 +110,8 @@ agent5=tk.Agent("agent5",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -126,8 +126,8 @@ agent6=tk.Agent("agent6",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -142,8 +142,8 @@ agent7=tk.Agent("agent7",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -158,8 +158,8 @@ agent8=tk.Agent("agent8",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -174,8 +174,8 @@ agent9=tk.Agent("agent9",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -191,8 +191,8 @@ agent10=tk.Agent("agent10",
 				critic_network=tk.NN,
 				biomass_ind=tm.ToyModel_SA.Biomass_Ind,
 				reward_vect=agent1_rew_vect,
-				clip=0.01,
-				lr_actor=0.00005,
+				clip=0.1,
+				lr_actor=0.0001,
 				lr_critic=0.001,
 				grad_updates=1,
 				optimizer_actor=torch.optim.Adam,
@@ -208,7 +208,7 @@ agent10=tk.Agent("agent10",
 # 				biomass_ind=tm.Toy_Model_NE_2.Biomass_Ind,
 #                 reward_vect=agent2_rew_vect,
 # 				clip=0.1,
-# 				lr_actor=0.00005,
+# 				lr_actor=0.0001,
 # 				lr_critic=0.001,
 # 				grad_updates=1,
 # 				optimizer_actor=torch.optim.Adam,
@@ -217,12 +217,12 @@ agent10=tk.Agent("agent10",
 # 				gamma=1
 # )
 
-agents=[agent1,agent2,agent3,agent4,agent5,agent6,agent7,agent8,agent9,agent10]
+agents=[agent1]
 
-env=tk.Environment(name="Toy-NECOM-lpless_10_next_try",
+env=tk.Environment(name="Toy-NECOM-lpless_1_next_try",
 					agents=agents,
 					dilution_rate=0.01,
-					initial_condition={"Glc":50,"agent1":0.1,"agent2":0.1,"agent3":0.1,"agent4":0.1,"agent5":0.1,"agent6":0.1,"agent7":0.1,"agent8":0.1,"agent9":0.1,"agent10":0.1,"Starch":10},
+					initial_condition={"Glc":50,"agent1":0.1,"Starch":10},
 					inlet_conditions={"Starch":10},
                     extracellular_reactions=[{"reaction":{
                      "Glc":10,
@@ -230,7 +230,7 @@ env=tk.Environment(name="Toy-NECOM-lpless_10_next_try",
                      "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
 							dt=0.1,
 							episode_time=20,
-							number_of_batches=10000,
+							number_of_batches=20000,
 							episodes_per_batch=NUM_CORES,)
 
 # with open(f"Results/Toy-NECOM-host/agent1_0.pkl", 'rb') as f:
@@ -240,7 +240,7 @@ env=tk.Environment(name="Toy-NECOM-lpless_10_next_try",
 #        agent2 = pickle.load(f)
 
 
-env.agents=[agent1,agent2,agent3,agent4,agent5,agent6,agent7,agent8,agent9,agent10]
+env.agents=[agent1]
 
 env.rewards={agent.name:[] for agent in env.agents}
 
@@ -252,6 +252,10 @@ for agent in env.agents:
 
 
 for batch in range(env.number_of_batches):
+	# if (batch+1) % 2000 == 0:
+	# 	for agent in env.agents:
+	# 		agent.clip *= 0.1
+
 	batch_obs,batch_acts, batch_log_probs, batch_rtgs=tk.rollout(env)
 	for agent in env.agents:
 		V, _,mean= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])

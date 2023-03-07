@@ -15,7 +15,7 @@ class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=24,activation=nn.ReLU ):
+    def __init__(self,input_dim,output_dim,hidden_dim=24,activation=nn.Tanh ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -402,9 +402,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        # batch.append(run_episode_single(env))
-        batch.append(run_episode.remote(env))
-    batch = ray.get(batch)
+        batch.append(run_episode_single(env))
+        # batch.append(run_episode.remote(env))
+    # batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
