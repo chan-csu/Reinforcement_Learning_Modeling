@@ -1,25 +1,24 @@
+from distutils.log import warn
+import cobra
+import torch
 import numpy as np
-from scipy import linalg
+import random
 import torch
 import torch.nn as nn
-import cobra
-import pandas as pd
-from torch.distributions import MultivariateNormal,Normal
-import ray
+from collections import deque,namedtuple
+from torch.distributions import MultivariateNormal
 import time
-from warnings import warn
-
-DEVICE=torch.device('cpu')
+import ray
+import pandas as pd
 
 class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=24,activation=nn.Tanh ):
+    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.Tanh ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -38,53 +37,11 @@ class NN(nn.Module):
     def forward(self, obs):
         out=self.inlayer(obs)
         out=self.hidden(out)
-        out=self.output(out)
+        out=nn.Tanh(self.output(out))
         return out
 
 
-
-class Model:
-    """This class is a substitute for cobra model. It is used to completely remove LP solver from the solution.
-    This is well suited for RL as it makes the algorithm rely on matrix operations only and not rely on external solvers.
-    """
-    def __init__(self,reactions:list[cobra.Reaction],metabolites:list[cobra.Metabolite], lb:torch.FloatTensor, ub:torch.FloatTensor,exchanges:tuple,nullspace:torch.FloatTensor,biomass_ind:int):
-        self.lb = lb.to(DEVICE)
-        self.ub = ub.to(DEVICE)
-        self.reactions=reactions
-        self.metabolites=metabolites
-        self.biomass_ind=biomass_ind
-        self.exchange_reactions=exchanges 
-        self.nullspace=nullspace.to(DEVICE)
-        self.control=torch.zeros((self.nullspace.shape[0],1),device=DEVICE)
-
-
-
-def calculate_flux(model:Model):
-    sol_raw=torch.matmul(model.control,model.nullspace)
-    sols=torch.clip(sol_raw,model.lb,model.ub)
-    res=torch.sum(torch.abs(sols-sol_raw))
-    return sols,res
-
-def calculate_residual(model:Model,control:torch.FloatTensor):
-    sol_raw=torch.matmul(control,model.nullspace)
-    sols=torch.clip(sol_raw,model.lb,model.ub)
-    res=torch.sum(torch.abs(sols-sol_raw),dim=1)
-    return res
-
-def parse_cobra_model(model:cobra.Model,biomass_ind:int,null_space:np.ndarray=None):
-    """This function takes a cobra model and returns a Model object.
-    """
-    lb = torch.FloatTensor([r.lower_bound for r in model.reactions])
-    ub = torch.FloatTensor([r.upper_bound for r in model.reactions])
-    reactions=list(model.reactions)
-    metabolites=list(model.metabolites)
-    s=cobra.util.array.create_stoichiometric_matrix(model)
-    if null_space is None:
-        nullspace = torch.FloatTensor(linalg.null_space(s)).t()
-    else:
-        nullspace = torch.FloatTensor(null_space).t()
-    exchanges = tuple(np.where(np.sum(s!=0,axis=0)==1)[0])
-    return Model(reactions=reactions,metabolites=metabolites,lb=lb,ub=ub,nullspace=nullspace,exchanges=exchanges,biomass_ind=biomass_ind)
+        
 
 
 class Environment:
@@ -110,8 +67,11 @@ class Environment:
                 dt:float=0.1,
                 episode_time:float=1000,
                 dilution_rate:float=0.05,
+                min_c:dict={},
+                max_c:dict={},
                 episodes_per_batch:int=10,
                 training:bool=True,
+                
                 
                 ) -> None:
         self.name=name
@@ -130,11 +90,14 @@ class Environment:
         self.resolve_extracellular_reactions(extracellular_reactions)
         self.initial_condition =np.zeros((len(self.species),))
         for key,value in initial_condition.items():
-            if key in self.species:
-                self.initial_condition[self.species.index(key)]=value
+            self.initial_condition[self.species.index(key)]=value
         self.inlet_conditions = np.zeros((len(self.species),))
         for key,value in inlet_conditions.items():
             self.inlet_conditions[self.species.index(key)]=value
+        self.min_c = np.zeros((len(self.species),))
+        self.max_c = np.ones((len(self.species),))
+        for key,value in max_c.items():
+            self.max_c[self.species.index(key)]=value
         self.set_observables()
         self.set_networks()
         self.reset()
@@ -170,33 +133,43 @@ class Environment:
         """ Performs a single step in the environment."""
         self.temp_actions=[]
         self.state[self.state<0]=0
-        dCdt=np.zeros((len(self.species),))
-
+        dCdt = np.zeros(self.state.shape)
+        Sols = list([0 for i in range(len(self.agents))])
         for i,M in enumerate(self.agents):
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
-                    M.model.lb[self.mapping_matrix['Mapping_Matrix'][index,i]]=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
-            M.model.control=torch.tensor(M.a).to(DEVICE)
-            M.fluxes,M.res=calculate_flux(M.model)
+                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=100
+                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
 
-            if M.res>0.001:
-                M.reward=-M.res
-                M.fluxes=torch.zeros_like(M.fluxes)
-            else:
-                M.reward=torch.matmul(M.reward_vect,M.fluxes)
-            dCdt[i]+=M.fluxes[M.model.biomass_ind].item()*self.state[i]
-            # M.reward=torch.matmul(M.reward_vect,M.fluxes)
+            for index,flux in enumerate(M.actions):
+                M.model.reactions[M.actions[index]].lower_bound=((1+M.a[index])*M._UB[flux]+(1-M.a[index])*M._LB[flux])/2
+                
+                # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
+            Sols[i] = self.agents[i].model.optimize()
+            # self.agents[i].feasibility_optimizer_.zero_grad()
+            if Sols[i].status == 'infeasible':
+                self.agents[i].reward=-1
+                dCdt[i] = 0
+                # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
+                # l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
             
-
+            else:
+                dCdt[i] += Sols[i].objective_value*self.state[i]
+                self.agents[i].reward =Sols[i].objective_value*self.state[i]
+                # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
+                # l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
+            # l.backward()
+            # self.agents[i].feasibility_optimizer_.step()
+        # Handling the exchange reaction balances in the community
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
         
             for j in range(len(self.agents)):
+
                 if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
-                    if self.agents[j].res > 0.001:
+                    if Sols[j].status == 'infeasible':
                         dCdt[i+len(self.agents)] += 0
                     else:
-                  
-                        dCdt[i+len(self.agents)] += self.agents[j].fluxes[self.mapping_matrix["Mapping_Matrix"]
+                        dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
                                                     [i, j]]*self.state[j]
         
         # Handling extracellular reactions
@@ -209,7 +182,7 @@ class Environment:
         C=self.state.copy()
         self.state += dCdt*self.dt
         Cp=self.state.copy()
-        return C,list(i.reward.cpu() for i in self.agents),list(i.a for i in self.agents),Cp
+        return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
 
     @ray.remote
@@ -224,15 +197,11 @@ class Environment:
                     M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=10
                     M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(C[index+len(self.agents)])    
             
-            for index,flux in enumerate(M.actions): 
-                if M.a[index]<0:
-                
-                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],-10)
-                    # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound    
-                else:
-                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],20)
+            for index,flux in enumerate(M.actions):
+                M.model.reactions[M.actions[index]].lower_bound=M.a[index]
 
-                # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
+
+            
             Sols[i] = self.agents[i].model.optimize()
             if Sols[i].status == 'infeasible':
                 self.agents[i].reward= 0
@@ -247,8 +216,10 @@ class Environment:
         
             for j in range(len(self.agents)):   
                 if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
-
-                    dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
+                    if Sols[j].status == 'infeasible':
+                        dCdt[i+len(self.agents)] += 0
+                    else:
+                        dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
                                                     [i, j]]*C[j]
 
         for ex_reaction in self.extracellular_reactions:
@@ -286,14 +257,11 @@ class Environment:
         """ Sets the networks for the agents in the environment."""
         if self.training==True:
             for agent in self.agents:
-                agent.actor_network_=agent.actor_network(len(agent.observables)+1,agent.model.control.shape[0])
+                agent.actor_network_=agent.actor_network(len(agent.observables)+1,len(agent.actions))
                 agent.critic_network_=agent.critic_network(len(agent.observables)+1,1)
                 agent.optimizer_value_ = agent.optimizer_critic(agent.critic_network_.parameters(), lr=agent.lr_critic)
                 agent.optimizer_policy_ = agent.optimizer_actor(agent.actor_network_.parameters(), lr=agent.lr_actor)
-
-
-
-
+    
 class Agent:
     """ Any microbial agent will be an instance of this class.
     """
@@ -304,27 +272,25 @@ class Agent:
                 critic_network:NN,
                 optimizer_critic:torch.optim.Adam,
                 optimizer_actor:torch.optim.Adam,
-                reward_vect:np.ndarray,
+                actions:list[str],
                 observables:list[str],
                 gamma:float,
-                biomass_ind:int,
                 clip:float=0.01,
                 grad_updates:int=1,
-                actor_var:float=1,
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
                 lr_critic:float=0.001,
-                null_space:np.ndarray=None,
                 buffer_sample_size:int=500,
                 tau:float=0.001,
                 alpha:float=0.001) -> None:
 
         self.name = name
-        self.model = parse_cobra_model(model,null_space=null_space,biomass_ind=biomass_ind)
+        self.model = model
         self.optimizer_critic = optimizer_critic
         self.optimizer_actor = optimizer_actor
         self.gamma = gamma
         self.observables = observables
+        self.actions = [self.model.reactions.index(item) for item in actions]
         self.observables = observables
         self.epsilon = epsilon
         self.general_uptake_kinetics=general_uptake
@@ -338,28 +304,25 @@ class Agent:
         self.alpha = alpha
         self.actor_network = actor_network
         self.critic_network = critic_network
-        self.actor_var=actor_var
-        self.biomass_ind=biomass_ind
-        self.reward_vect = reward_vect.to(DEVICE)
+        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.1)
+        self.cov_mat = torch.diag(self.cov_var)
    
     def get_actions(self,observation:np.ndarray):
         """ 
         Gets the actions and their probabilities for the agent.
         """
         mean = self.actor_network_(torch.tensor(observation, dtype=torch.float32)).detach()
-        dist = Normal(mean, self.actor_var)
-        # dist=torch.distributions.Uniform(low=mean-0.001, high=mean+0.001)
+        dist = MultivariateNormal(mean, self.cov_mat)
         action = dist.sample()
-        log_prob =torch.sum(dist.log_prob(action))
-        return action.detach().numpy(), log_prob.detach().numpy()
+        log_prob = dist.log_prob(action)
+        return action.detach().numpy(), log_prob
    
     def evaluate(self, batch_obs,batch_acts):
         V = self.critic_network_(batch_obs).squeeze()
         mean = self.actor_network_(batch_obs)
-        dist = Normal(mean, self.actor_var)
-        # dist=torch.distributions.Uniform(low=mean-0.001, high=mean+0.001)
-        log_probs = torch.sum(dist.log_prob(batch_acts),dim=1)
-        return V, log_probs , mean
+        dist = MultivariateNormal(mean, self.cov_mat)
+        log_probs = dist.log_prob(batch_acts)
+        return V, log_probs 
     
     def compute_rtgs(self, batch_rews):
 
@@ -377,23 +340,92 @@ class Agent:
         return batch_rtgs
 
 
-def Build_Mapping_Matrix(models:list[cobra.Model])->dict:
+        
+def Build_Mapping_Matrix(Models:list[cobra.Model])->dict:
     """
     Given a list of COBRA model objects, this function will build a mapping matrix for all the exchange reactions.
 
     """
 
     Ex_sp = []
-    Ex_rxns = []
     Temp_Map={}
-    for model in models:
-        Ex_rxns.extend([(model,list(model.reactions[rxn].metabolites)[0].id,rxn) for rxn in model.exchange_reactions if model.reactions[rxn].id.endswith("_e") and rxn!=model.biomass_ind])
-    Ex_sp=list(set([item[1] for item in Ex_rxns]))
-    Mapping_Matrix = np.full((len(Ex_sp), len(models)),-1, dtype=int)
-    for record in Ex_rxns:
-        Mapping_Matrix[Ex_sp.index(record[1]),models.index(record[0])]=record[2]
+    for model in Models:
+        
+        
+        if not hasattr(model,"Biomass_Ind"):
+            raise Exception("Models must have 'Biomass_Ind' attribute in order for the DFBA to work properly!")
+        
+        
+        for Ex_rxn in model.exchanges :
+            if Ex_rxn!=model.reactions[model.Biomass_Ind]:
+                if list(Ex_rxn.metabolites.keys())[0].id not in Ex_sp:
+                    Ex_sp.append(list(Ex_rxn.metabolites.keys())[0].id)
+                if list(Ex_rxn.metabolites.keys())[0].id in Temp_Map.keys():
+                   Temp_Map[list(Ex_rxn.metabolites.keys())[0].id][model]=Ex_rxn
+                else:
+                     Temp_Map[list(Ex_rxn.metabolites.keys())[0].id]={model:Ex_rxn}
 
+    Mapping_Matrix = np.zeros((len(Ex_sp), len(Models)), dtype=int)
+    for i, id in enumerate(Ex_sp):
+        for j, model in enumerate(Models):
+            if model in Temp_Map[id].keys():
+                Mapping_Matrix[i, j] = model.reactions.index(Temp_Map[id][model].id)
+            else:
+                Mapping_Matrix[i, j] = -1
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
+@ray.remote
+def simulate(env,episodes=200,steps=1000):
+    """ Simulates the environment for a given number of episodes and steps."""
+    env.rewards=np.zeros((len(env.agents),episodes))
+    env.record=[]
+    for episode in range(episodes):
+        env.reset()
+        env.episode=episode
+
+        for agent in env.agents:
+            agent.rewards=[]
+        C=[]
+        episode_len=steps
+        for ep in range(episode_len):
+            env.t=episode_len-ep
+            s,r,a,sp=env.step()
+            for ind,ag in enumerate(env.agents):
+                ag.rewards.append(r[ind])
+                # ag.optimizer_reward_.zero_grad()
+                # # r_pred=ag.reward_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
+                # # r_loss=nn.MSELoss()(r_pred,torch.FloatTensor(np.expand_dims(np.array(r[ind]),0)))
+                # # r_loss.backward()
+                # ag.optimizer_reward_.step()
+                ag.optimizer_value_.zero_grad()
+                Qvals = ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), torch.FloatTensor(a[ind]))
+                next_actions = ag.actor_network_(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])))
+                if env.t==1:
+                    next_Q = torch.FloatTensor([0])
+                else:
+                    next_Q = ag.critic_network_.forward(torch.FloatTensor(np.hstack([sp[ag.observables],env.t-1])), next_actions.detach())
+                Qprime = torch.FloatTensor(np.expand_dims(np.array(r[ind]),0))+ag.gamma*next_Q
+                critic_loss=nn.MSELoss()(Qvals,Qprime.detach())
+                critic_loss.backward()
+                ag.optimizer_value_.step()
+                ag.optimizer_policy_.zero_grad()
+                policy_loss = -ag.critic_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])), ag.actor_network_(torch.FloatTensor(np.hstack([s[ag.observables],env.t])))).mean()
+                policy_loss.backward()
+                ag.optimizer_policy_.step()
+            C.append(env.state.copy())
+            env.record.append(np.hstack([env.state.copy(),np.reshape(np.array(env.temp_actions),(-1))]))
+
+        # pd.DataFrame(C,columns=env.species).to_csv("Data.csv")
+
+        for ag_ind,agent in enumerate(env.agents):
+            print(episode)
+            print(np.sum(agent.rewards))
+            env.rewards[ag_ind,episode]=np.sum(agent.rewards)
+    return env.rewards.copy(),env.record.copy()
+
+def general_kinetic(x,y):
+    return 0.1*x*y/(10+x)
+def general_uptake(c):
+    return 20*(c/(c+20))
 
 def rollout(env):
     batch_obs={key.name:[] for key in env.agents}
@@ -403,9 +435,8 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        batch.append(run_episode_single(env))
-        # batch.append(run_episode.remote(env))
-    # batch = ray.get(batch)
+        batch.append(run_episode.remote(env))
+    batch=ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
@@ -422,7 +453,7 @@ def rollout(env):
 
         batch_obs[agent.name] = torch.tensor(batch_obs[agent.name], dtype=torch.float)
         batch_acts[agent.name] = torch.tensor(batch_acts[agent.name], dtype=torch.float)
-        batch_log_probs[agent.name] = torch.tensor(np.array(batch_log_probs[agent.name]), dtype=torch.float)
+        batch_log_probs[agent.name] = torch.tensor(batch_log_probs[agent.name], dtype=torch.float)
         batch_rtgs[agent.name] = agent.compute_rtgs(batch_rews[agent.name]) 
     return batch_obs,batch_acts, batch_log_probs, batch_rtgs
 
@@ -441,16 +472,17 @@ def run_episode(env):
         for agent in env.agents:   
             action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
             agent.a=action
-            agent.log_prob=log_prob
+            agent.log_prob=log_prob.detach()  
+        start=time.time()      
         s,r,a,sp=env.step()
+        end=time.time()
+        print("Time taken for step: ",end-start)
         for ind,ag in enumerate(env.agents):
             batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
             batch_acts[ag.name].append(a[ind])
             batch_log_probs[ag.name].append(ag.log_prob)
             episode_rews[ag.name].append(r[ind])
     return batch_obs,batch_acts, batch_log_probs, episode_rews
-
-
 
 def run_episode_single(env):
     """ Runs a single episode of the environment. """
@@ -466,7 +498,7 @@ def run_episode_single(env):
         for agent in env.agents:   
             action, log_prob = agent.get_actions(np.hstack([obs[agent.observables],env.t]))
             agent.a=action
-            agent.log_prob=log_prob
+            agent.log_prob=log_prob .detach()        
         s,r,a,sp=env.step()
         for ind,ag in enumerate(env.agents):
             batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
@@ -474,20 +506,3 @@ def run_episode_single(env):
             batch_log_probs[ag.name].append(ag.log_prob)
             episode_rews[ag.name].append(r[ind])
     return batch_obs,batch_acts, batch_log_probs, episode_rews
-
-
-
-
-def general_kinetic(x,y):
-    return 0.1*x*y/(10+x)
-def general_uptake(c):
-    return 20*(c/(c+20))
-
-
-
-
-
-
-if __name__ == "__main__":
-    cmodel=cobra.io.read_sbml_model("iAF1260.xml")
-    model=parse_cobra_model(cmodel)
