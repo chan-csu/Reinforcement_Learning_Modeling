@@ -32,12 +32,12 @@ class NN(nn.Module):
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),)
-        self.output=nn.Linear(hidden_dim,output_dim)
+        self.output=nn.Sequential(nn.Linear(hidden_dim,output_dim),nn.Tanh())
     
     def forward(self, obs):
         out=self.inlayer(obs)
         out=self.hidden(out)
-        out=nn.Tanh(self.output(out))
+        out=self.output(out)
         return out
 
 
@@ -138,10 +138,10 @@ class Environment:
         for i,M in enumerate(self.agents):
             for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
                 if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=100
                     M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(self.state[index+len(self.agents)])
 
             for index,flux in enumerate(M.actions):
+                M.a=np.clip(M.a,-1,1)
                 M.model.reactions[M.actions[index]].lower_bound=((1+M.a[index])*M._UB[flux]+(1-M.a[index])*M._LB[flux])/2
                 
                 # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
@@ -156,11 +156,7 @@ class Environment:
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
                 self.agents[i].reward =Sols[i].objective_value*self.state[i]
-                # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
-                # l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
-            # l.backward()
-            # self.agents[i].feasibility_optimizer_.step()
-        # Handling the exchange reaction balances in the community
+ 
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
         
             for j in range(len(self.agents)):
@@ -306,6 +302,8 @@ class Agent:
         self.critic_network = critic_network
         self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.1)
         self.cov_mat = torch.diag(self.cov_var)
+        self._LB=tuple([i.lower_bound for i in self.model.reactions])
+        self._UB=tuple([i.upper_bound for i in self.model.reactions])
    
     def get_actions(self,observation:np.ndarray):
         """ 
@@ -435,8 +433,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        batch.append(run_episode.remote(env))
-    batch=ray.get(batch)
+        batch.append(run_episode_single(env))
+    #     batch.append(run_episode.remote(env))
+    # batch=ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])

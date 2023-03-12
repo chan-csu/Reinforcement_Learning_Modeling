@@ -183,7 +183,7 @@ class Environment:
                 M.reward=-M.res
                 M.fluxes=torch.zeros_like(M.fluxes)
             else:
-                M.reward=torch.matmul(M.reward_vect,M.fluxes)
+                M.reward=torch.matmul(M.reward_vect,M.fluxes)*self.state[i]
             dCdt[i]+=M.fluxes[M.model.biomass_ind].item()*self.state[i]
             # M.reward=torch.matmul(M.reward_vect,M.fluxes)
             
@@ -212,53 +212,6 @@ class Environment:
         return C,list(i.reward.cpu() for i in self.agents),list(i.a for i in self.agents),Cp
 
 
-    @ray.remote
-    def _step_p(self,C):
-        """ Performs a single step in the environment."""
-        dCdt = np.zeros(C.shape)
-        Sols = list([0 for i in range(len(self.agents))])
-        for i,M in enumerate(self.agents):
-            
-            for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
-                if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=10
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(C[index+len(self.agents)])    
-            
-            for index,flux in enumerate(M.actions): 
-                if M.a[index]<0:
-                
-                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],-10)
-                    # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound    
-                else:
-                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],20)
-
-                # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
-            Sols[i] = self.agents[i].model.optimize()
-            if Sols[i].status == 'infeasible':
-                self.agents[i].reward= 0
-                dCdt[i] = 0
-            else:
-                dCdt[i] += Sols[i].objective_value*C[i]
-                self.agents[i].reward =Sols[i].objective_value
-            
-
-        # Handling the exchange reaction balances in the community  
-        for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
-        
-            for j in range(len(self.agents)):   
-                if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
-
-                    dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
-                                                    [i, j]]*C[j]
-
-        for ex_reaction in self.extracellular_reactions:
-            rate=ex_reaction["kinetics"][0](*[C[self.species.index(item)] for item in ex_reaction["kinetics"][1]])
-            for metabolite in ex_reaction["reaction"].keys():
-                dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
-        dCdt+=self.dilution_rate*(self.inlet_conditions-C)
-        Cp=C + dCdt*self.dt
-        Cp[Cp<0]=0
-        return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
     def generate_random_c(self,size:int):
         """ Generates a random initial condition for the environment."""
@@ -310,7 +263,7 @@ class Agent:
                 biomass_ind:int,
                 clip:float=0.01,
                 grad_updates:int=1,
-                actor_var:float=1,
+                actor_var:float=0.1,
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
                 lr_critic:float=0.001,
@@ -403,9 +356,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        batch.append(run_episode_single(env))
-        # batch.append(run_episode.remote(env))
-    # batch = ray.get(batch)
+        # batch.append(run_episode_single(env))
+        batch.append(run_episode.remote(env))
+    batch = ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])

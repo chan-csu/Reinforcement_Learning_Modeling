@@ -15,7 +15,7 @@ class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.Tanh ):
+    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.ReLU ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -28,10 +28,7 @@ class NN(nn.Module):
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),)
+                                  )
         self.output=nn.Linear(hidden_dim,output_dim)
     
     def forward(self, obs):
@@ -193,56 +190,6 @@ class Environment:
         return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
 
-    @ray.remote
-    def _step_p(self,C):
-        """ Performs a single step in the environment."""
-        dCdt = np.zeros(C.shape)
-        Sols = list([0 for i in range(len(self.agents))])
-        for i,M in enumerate(self.agents):
-            
-            for index,item in enumerate(self.mapping_matrix["Ex_sp"]):
-                if self.mapping_matrix['Mapping_Matrix'][index,i]!=-1:
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].upper_bound=10
-                    M.model.reactions[self.mapping_matrix['Mapping_Matrix'][index,i]].lower_bound=-M.general_uptake_kinetics(C[index+len(self.agents)])    
-            
-            for index,flux in enumerate(M.actions): 
-                if M.a[index]<0:
-                
-                    M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],-10)
-                    # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound    
-                else:
-                    M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],20)
-
-                # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.000001    
-            
-            Sols[i] = self.agents[i].model.optimize()
-            if Sols[i].status == 'infeasible':
-                self.agents[i].reward= 0
-                dCdt[i] = 0
-            else:
-                dCdt[i] += Sols[i].objective_value*C[i]
-                self.agents[i].reward =Sols[i].objective_value
-            
-
-        # Handling the exchange reaction balances in the community  
-        for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
-        
-            for j in range(len(self.agents)):   
-                if self.mapping_matrix["Mapping_Matrix"][i, j] != -1:
-                    if Sols[j].status == 'infeasible':
-                        dCdt[i+len(self.agents)] += 0
-                    else:
-                        dCdt[i+len(self.agents)] += Sols[j].fluxes.iloc[self.mapping_matrix["Mapping_Matrix"]
-                                                    [i, j]]*C[j]
-
-        for ex_reaction in self.extracellular_reactions:
-            rate=ex_reaction["kinetics"][0](*[C[self.species.index(item)] for item in ex_reaction["kinetics"][1]])
-            for metabolite in ex_reaction["reaction"].keys():
-                dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
-        dCdt+=self.dilution_rate*(self.inlet_conditions-C)
-        Cp=C + dCdt*self.dt
-        Cp[Cp<0]=0
-        return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
     def generate_random_c(self,size:int):
         """ Generates a random initial condition for the environment."""
@@ -354,38 +301,24 @@ class Agent:
 
 
         
-def Build_Mapping_Matrix(Models:list[cobra.Model])->dict:
+def Build_Mapping_Matrix(models:list[cobra.Model])->dict:
     """
     Given a list of COBRA model objects, this function will build a mapping matrix for all the exchange reactions.
 
     """
 
     Ex_sp = []
+    Ex_rxns = []
     Temp_Map={}
-    for model in Models:
-        
-        
-        if not hasattr(model,"Biomass_Ind"):
-            raise Exception("Models must have 'Biomass_Ind' attribute in order for the DFBA to work properly!")
-        
-        
-        for Ex_rxn in model.exchanges :
-            if Ex_rxn!=model.reactions[model.Biomass_Ind]:
-                if list(Ex_rxn.metabolites.keys())[0].id not in Ex_sp:
-                    Ex_sp.append(list(Ex_rxn.metabolites.keys())[0].id)
-                if list(Ex_rxn.metabolites.keys())[0].id in Temp_Map.keys():
-                   Temp_Map[list(Ex_rxn.metabolites.keys())[0].id][model]=Ex_rxn
-                else:
-                     Temp_Map[list(Ex_rxn.metabolites.keys())[0].id]={model:Ex_rxn}
+    for model in models:
+        Ex_rxns.extend([(model,list(model.reactions[rxn].metabolites)[0].id,rxn) for rxn in model.exchange_reactions if model.reactions[rxn].id.endswith("_e") and rxn!=model.biomass_ind])
+    Ex_sp=list(set([item[1] for item in Ex_rxns]))
+    Mapping_Matrix = np.full((len(Ex_sp), len(models)),-1, dtype=int)
+    for record in Ex_rxns:
+        Mapping_Matrix[Ex_sp.index(record[1]),models.index(record[0])]=record[2]
 
-    Mapping_Matrix = np.zeros((len(Ex_sp), len(Models)), dtype=int)
-    for i, id in enumerate(Ex_sp):
-        for j, model in enumerate(Models):
-            if model in Temp_Map[id].keys():
-                Mapping_Matrix[i, j] = model.reactions.index(Temp_Map[id][model].id)
-            else:
-                Mapping_Matrix[i, j] = -1
     return {"Ex_sp": Ex_sp, "Mapping_Matrix": Mapping_Matrix}
+
 @ray.remote
 def simulate(env,episodes=200,steps=1000):
     """ Simulates the environment for a given number of episodes and steps."""
@@ -448,6 +381,7 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
+        # batch.append(run_episode_single(env))
         batch.append(run_episode.remote(env))
     batch=ray.get(batch)
     for ep in range(env.episodes_per_batch):
@@ -489,7 +423,6 @@ def run_episode(env):
         start=time.time()      
         s,r,a,sp=env.step()
         end=time.time()
-        print("Time taken for step: ",end-start)
         for ind,ag in enumerate(env.agents):
             batch_obs[ag.name].append(np.hstack([s[ag.observables],env.t]))
             batch_acts[ag.name].append(a[ind])

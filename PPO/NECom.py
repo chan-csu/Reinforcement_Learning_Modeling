@@ -15,50 +15,66 @@ import seaborn  as sns
 import matplotlib.pyplot as plt
 import warnings
 import json
+import rich
 import multiprocessing as mp
-NUM_CORES = mp.cpu_count()
+NUM_CORES = 8
 print(f"{NUM_CORES} cores available: Each policy evaluation will\ncontain {NUM_CORES} Episode(s)")
 warnings.filterwarnings("ignore") 
 
 
 
-# agent1=tk.Agent("agent1",
-#                 model=tm.ToyModel_SA.copy(),
-#                 actor_network=tk.NN,
-#                 critic_network=tk.NN,
-#                 clip=0.1,
-#                 lr_actor=0.0001,
-#                 lr_critic=0.001,
-#                 grad_updates=5,
-#                 optimizer_actor=torch.optim.Adam,
-#                 optimizer_critic=torch.optim.Adam,
-#                 observables=['agent1', 'Glc', 'Starch'],
-#                 actions=["Amylase_Ex"],
-#                 gamma=1,
-#                 tau=0.1
-#                 )
+agent1=tk.Agent("agent1",
+                model=tm.ToyModel_SA.copy(),
+                actor_network=tk.NN,
+                critic_network=tk.NN,
+                clip=0.1,
+                lr_actor=0.0001,
+                lr_critic=0.001,
+                grad_updates=10,
+                optimizer_actor=torch.optim.Adam,
+                optimizer_critic=torch.optim.Adam,
+                observables=['agent1','agent2' ,'Glc', 'Starch'],
+                actions=["Amylase_e"],
+                gamma=1,
+                tau=0.1
+                )
 
+agent2=tk.Agent("agent2",
+                model=tm.ToyModel_SA.copy(),
+                actor_network=tk.NN,
+                critic_network=tk.NN,
+                clip=0.1,
+                lr_actor=0.0001,
+                lr_critic=0.001,
+                grad_updates=10,
+                optimizer_actor=torch.optim.Adam,
+                optimizer_critic=torch.optim.Adam,
+                observables=['agent1','agent2', 'Glc', 'Starch'],
+                actions=["Amylase_e"],
+                gamma=1,
+                tau=0.1
+                )
 
-# agents=[agent1]
+agents=[agent1,agent2]
 
-# env=tk.Environment(name="Toy-Exoenzyme",
-#                     agents=agents,
-#                     dilution_rate=0.0001,
-#                     initial_condition={"Glc":100,"agent1":0.1,"Starch":10},
-#                     inlet_conditions={"Starch":10},
-#                     extracellular_reactions=[{"reaction":{
-#                     "Glc":10,
-#                     "Starch":-0.1,},
-#                     "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
-#                     max_c={'Glc':100,
-#                            'agent1':10,  
-#                            'Starch':10,
-#                            },
-#                            dt=0.1,
-#                            episode_time=100,
-#                            number_of_batches=5000,
-#                            episodes_per_batch=10,
-#                            )
+env=tk.Environment(name="Toy-Exoenzyme-Two-agents",
+                    agents=agents,
+                    dilution_rate=0.0001,
+                    initial_condition={"Glc":100,"agent1":0.1,"agent2":0.1,"Starch":10},
+                    inlet_conditions={"Starch":10},
+                    extracellular_reactions=[{"reaction":{
+                    "Glc":10,
+                    "Starch":-0.1,},
+                    "kinetics": (tk.general_kinetic,("Glc","Amylase"))}],
+                    max_c={'Glc':100,
+                           'agent1':10,  
+                           'Starch':10,
+                           },
+                           dt=0.1,
+                           episode_time=100,
+                           number_of_batches=5000,
+                           episodes_per_batch=4,
+                           )
 
 
 # for episode in range(env.number_of_episodes):
@@ -97,53 +113,52 @@ warnings.filterwarnings("ignore")
 #     for agent in env.agents:
 #         print(f"{agent.name} return is:  {torch.FloatTensor(env.returns[agent.name]).sum()}")
 
-agent1=tk.Agent("agent1",
-				model=tm.Toy_Model_NE_1,
-				actor_network=tk.NN,
-				critic_network=tk.NN,
-				clip=0.1,
-				lr_actor=0.0001,
-				lr_critic=0.001,
-				grad_updates=1,
-				optimizer_actor=torch.optim.Adam,
-				optimizer_critic=torch.optim.Adam,       
-				observables=['agent1','agent2','S',"A","B"],
-				actions=['EX_A_sp1','EX_B_sp1'],
-				gamma=1,
-				)
+# agent1=tk.Agent("agent1",
+# 				model=tm.Toy_Model_NE_1,
+# 				actor_network=tk.NN,
+# 				critic_network=tk.NN,
+# 				clip=0.1,
+# 				lr_actor=0.0001,
+# 				lr_critic=0.001,
+# 				grad_updates=1,
+# 				optimizer_actor=torch.optim.Adam,
+# 				optimizer_critic=torch.optim.Adam,       
+# 				observables=['agent1','agent2','S',"A","B"],
+# 				actions=['EX_A_sp1','EX_B_sp1'],
+# 				gamma=1,
+# 				)
 
-agent2=tk.Agent("agent2",
-				model=tm.Toy_Model_NE_2,
-				actor_network=tk.NN,
-				critic_network=tk.NN,
-				clip=0.1,
-				lr_actor=0.0001,
-				lr_critic=0.001,
-				grad_updates=1,
-				optimizer_actor=torch.optim.Adam,
-				optimizer_critic=torch.optim.Adam,       
-				observables=['agent1','agent2','S',"A","B"],
-				actions=['EX_A_sp2','EX_B_sp2'],
-				gamma=1
-)
+# agent2=tk.Agent("agent2",
+# 				model=tm.Toy_Model_NE_2,
+# 				actor_network=tk.NN,
+# 				critic_network=tk.NN,
+# 				clip=0.1,
+# 				lr_actor=0.0001,
+# 				lr_critic=0.001,
+# 				grad_updates=1,
+# 				optimizer_actor=torch.optim.Adam,
+# 				optimizer_critic=torch.optim.Adam,       
+# 				observables=['agent1','agent2','S',"A","B"],
+# 				actions=['EX_A_sp2','EX_B_sp2'],
+# 				gamma=1
+# )
 
-agents=[agent1,agent2]
 
-env=tk.Environment(name="Toy-NECOM-cplex",
-					agents=agents,
-					dilution_rate=0.0001,
-					extracellular_reactions=[],
-					initial_condition={"S":100,"agent1":0.1,"agent2":0.1,"A":10,"B":10},
-					inlet_conditions={"S":100},
-					max_c={'S':100,
-						   'agent1':10,  
-						   'agent2':10,
-						   'A':10,
-						   'B':10,},
-							dt=0.1,
-							episode_time=100,
-							number_of_batches=5000,
-							episodes_per_batch=NUM_CORES,)
+# env=tk.Environment(name="Toy-NECOM-cplex",
+# 					agents=agents,
+# 					dilution_rate=0.0001,
+# 					extracellular_reactions=[],
+# 					initial_condition={"S":100,"agent1":0.1,"agent2":0.1,"A":10,"B":10},
+# 					inlet_conditions={"S":100},
+# 					max_c={'S':100,
+# 						   'agent1':10,  
+# 						   'agent2':10,
+# 						   'A':10,
+# 						   'B':10,},
+# 							dt=0.1,
+# 							episode_time=20,
+# 							number_of_batches=5000,
+# 							episodes_per_batch=NUM_CORES,)
 
 # with open(f"Results/Toy-NECOM-host/agent1_0.pkl", 'rb') as f:
 #        agent1 = pickle.load(f)
@@ -152,48 +167,58 @@ env=tk.Environment(name="Toy-NECOM-cplex",
 #        agent2 = pickle.load(f)
 
 
-env.agents=[agent1,agent2]
-
 env.rewards={agent.name:[] for agent in env.agents}
 
 if not os.path.exists(f"Results/{env.name}"):
 	os.makedirs(f"Results/{env.name}")
 
 for agent in env.agents:
-	agent.model.solver="gurobi"
+	agent.model.solver="glpk"
 
 for batch in range(env.number_of_batches):
+
 	batch_obs,batch_acts, batch_log_probs, batch_rtgs=tk.rollout(env)
 	for agent in env.agents:
 		V, _= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
 		A_k = batch_rtgs[agent.name] - V.detach()   
 		A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5) 
-		for _ in range(agent.grad_updates):                                                      
-			V, curr_log_probs = agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
-			ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
-			surr1 = ratios * A_k.detach()
-			surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
-			actor_loss = (-torch.min(surr1, surr2)).mean()
-			critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
-			agent.optimizer_policy_.zero_grad()
-			actor_loss.backward(retain_graph=False)
-			agent.optimizer_policy_.step()
-			agent.optimizer_value_.zero_grad()
-			critic_loss.backward()
-			agent.optimizer_value_.step()                                                            
+		if batch==0:
+			rich.print("[bold yellow] Hold on, bringing the creitc network to range...[/bold yellow]")
+			err=21
+			while err>20:
+				V, _= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
+				critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
+				agent.optimizer_value_.zero_grad()
+				critic_loss.backward()
+				agent.optimizer_value_.step() 
+				err=critic_loss.item()
+				rich.print(f"[bold yellow] Error: {err}[/bold yellow]")
+			rich.print("[bold green] Done![/bold green]")
+		else: 
+			
+			for _ in range(agent.grad_updates):                                                      
+				V, curr_log_probs = agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
+				ratios = torch.exp(curr_log_probs - batch_log_probs[agent.name])
+				surr1 = ratios * A_k.detach()
+				surr2 = torch.clamp(ratios, 1 - agent.clip, 1 + agent.clip) * A_k
+				actor_loss = (-torch.min(surr1, surr2)).mean()
+				critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
+				agent.optimizer_policy_.zero_grad()
+				actor_loss.backward(retain_graph=False)
+				agent.optimizer_policy_.step()
+				agent.optimizer_value_.zero_grad()
+				critic_loss.backward()
+				agent.optimizer_value_.step()                                                            
 	
-	if batch%200==0:
-		for agent in env.agents:
-			with open(f"Results/{env.name}/{agent.name}_{batch}.pkl", 'wb') as f:
-				pickle.dump(agent, f)
-		with open(f"Results/{env.name}/returns_{batch}.json", 'w') as f:
-			json.dump(env.rewards, f)
-
-
+		if batch%500==0:
 		
-
-
-	print(f"Batch {batch} finished:")
-	for agent in env.agents:
-		print(f"{agent.name} return is:  {np.mean(env.rewards[agent.name][-env.episodes_per_batch:])}")
-
+			with open(f"Results/{env.name}/{env.name}_{batch}.pkl", 'wb') as f:
+				pickle.dump(env, f)
+			with open(f"Results/{env.name}/observations_{batch}.pkl", 'wb') as f:
+				pickle.dump(batch_obs,f)		
+			with open(f"Results/{env.name}/actions_{batch}.pkl", 'wb') as f:
+				pickle.dump(batch_acts,f)		
+          		
+		print(f"Batch {batch} finished:")
+		for agent in env.agents:
+			print(f"{agent.name} return is:  {np.mean(env.rewards[agent.name][-env.episodes_per_batch:])}")		

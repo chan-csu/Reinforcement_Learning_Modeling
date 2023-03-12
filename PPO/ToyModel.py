@@ -1,5 +1,6 @@
 from cobra import Model, Reaction, Metabolite
-
+import cobra
+import numpy as np
 """
 A Toy Model is a Cobra Model with the following:
 
@@ -143,7 +144,8 @@ Amylase_Ex.lower_bound = 0
 Amylase_Ex.upper_bound = 1000
 ToyModel_SA.add_reactions([Amylase_Ex])
 
-ToyModel_SA.Biomass_Ind=4
+ToyModel_SA.biomass_ind=4
+ToyModel_SA.exchange_reactions=tuple([ToyModel_SA.reactions.index(i) for i in ToyModel_SA.exchanges])
 
 
 
