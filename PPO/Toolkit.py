@@ -381,9 +381,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        # batch.append(run_episode_single(env))
-        batch.append(run_episode.remote(env))
-    batch=ray.get(batch)
+        batch.append(run_episode_single(env))
+    #     batch.append(run_episode.remote(env))
+    # batch=ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
