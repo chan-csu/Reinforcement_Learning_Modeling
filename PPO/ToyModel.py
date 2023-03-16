@@ -149,7 +149,8 @@ ToyModel_SA.exchange_reactions=tuple([ToyModel_SA.reactions.index(i) for i in To
 
 
 
-
+#########################################################
+#########################################################
 
 ### S_Uptake ###
 Toy_Model_NE_Aux_1 = Model('Toy_1_Aux')
@@ -196,18 +197,18 @@ R_1_sp1.upper_bound = 1000
 Toy_Model_NE_Aux_1.add_reactions([R_1_sp1])
 
 
-# R_2_sp1 = Reaction('R_2_sp1')
-# R_2_sp1.add_metabolites({ADP: 1, P: -1, B: 3, ATP: -1})
-# R_2_sp1.lower_bound = 0
-# R_2_sp1.upper_bound = 1000
-# Toy_Model_NE_Aux_1.add_reactions([(R_2_sp1)
+R_2_sp1 = Reaction('R_2_sp1')
+R_2_sp1.add_metabolites({ADP: 1, P: -1, B: 3, ATP: -1})
+R_2_sp1.lower_bound = 0
+R_2_sp1.upper_bound = 1000
+Toy_Model_NE_Aux_1.add_reactions([R_2_sp1])
 
 
-R_3_sp1 = Reaction('R_3_sp1')
-R_3_sp1.add_metabolites({ADP: 3, P: -1, A: 1, ATP: -3})
-R_3_sp1.lower_bound = 0
-R_3_sp1.upper_bound = 1000
-Toy_Model_NE_Aux_1.add_reactions([R_3_sp1])
+# R_3_sp1 = Reaction('R_3_sp1')
+# R_3_sp1.add_metabolites({ADP: 3, P: -1, A: 1, ATP: -3})
+# R_3_sp1.lower_bound = 0
+# R_3_sp1.upper_bound = 1000
+# Toy_Model_NE_Aux_1.add_reactions([R_3_sp1])
 
 
 
@@ -284,18 +285,18 @@ R_1_sp2.upper_bound = 1000
 Toy_Model_NE_Aux_2.add_reactions([R_1_sp2])
 
 
-R_2_sp2 = Reaction('R_2_sp2')
-R_2_sp2.add_metabolites({ADP: 3, P: -1, B: 1, ATP: -3})
-R_2_sp2.lower_bound = 0
-R_2_sp2.upper_bound = 1000
-Toy_Model_NE_Aux_2.add_reactions([R_2_sp2])
+# R_2_sp2 = Reaction('R_2_sp2')
+# R_2_sp2.add_metabolites({ADP: 3, P: -1, B: 1, ATP: -3})
+# R_2_sp2.lower_bound = 0
+# R_2_sp2.upper_bound = 1000
+# Toy_Model_NE_Aux_2.add_reactions([R_2_sp2])
 
 
-# R_3_sp2 = Reaction('R_3_sp2')
-# R_3_sp2.add_metabolites({ADP: 1, P: -1, A: 3, ATP: -1})
-# R_3_sp2.lower_bound = 0
-# R_3_sp2.upper_bound = 1000
-# Toy_Model_NE_Aux_2.add_reactions([(R_3_sp2)
+R_3_sp2 = Reaction('R_3_sp2')
+R_3_sp2.add_metabolites({ADP: 1, P: -1, A: 3, ATP: -1})
+R_3_sp2.lower_bound = 0
+R_3_sp2.upper_bound = 1000
+Toy_Model_NE_Aux_2.add_reactions([R_3_sp2])
 
 
 
@@ -310,7 +311,7 @@ Toy_Model_NE_Aux_2.add_reactions([R_4_sp2])
 
 OBJ_sp2 = Reaction("OBJ_sp2")
 biomass_sp2 = Metabolite('biomass_sp2', compartment='c')
-OBJ_sp2.add_metabolites({ADP:5 ,ATP: -5,biomass_sp2:0.1,A:-1,B:-1})
+OBJ_sp2.add_metabolites({ADP:5 ,ATP: -5,biomass_sp2:0.1,A:-5,B:-5})
 OBJ_sp2.lower_bound = 0
 OBJ_sp2.upper_bound = 1000
 Toy_Model_NE_Aux_2.add_reactions([OBJ_sp2])
@@ -500,13 +501,22 @@ Toy_Model_NE_Mut_2.exchange_reactions=tuple([Toy_Model_NE_Mut_2.reactions.index(
 
 
 if __name__ == '__main__':
-	print(ToyModel_SA.optimize().fluxes)
-	print(ToyModel_SA.optimize().status)
-	print(ToyModel_SA.exchanges)
-	print(ToyModel_SA.optimize().status)
+	# print(ToyModel_SA.optimize().fluxes)
+	# print(ToyModel_SA.optimize().status)
+	# print(ToyModel_SA.exchanges)
+	
 	print(Toy_Model_NE_Aux_1.optimize().fluxes)
 	print(Toy_Model_NE_Aux_1.optimize().status)
 	print(Toy_Model_NE_Aux_1.exchanges)
+
 	print(Toy_Model_NE_Aux_2.optimize().fluxes)
 	print(Toy_Model_NE_Aux_2.optimize().status)
 	print(Toy_Model_NE_Aux_2.exchanges)
+
+	# print(Toy_Model_NE_Mut_1.optimize().fluxes)
+	# print(Toy_Model_NE_Mut_1.optimize().status)
+	# print(Toy_Model_NE_Mut_1.exchanges)
+
+	# print(Toy_Model_NE_Mut_2.optimize().fluxes)
+	# print(Toy_Model_NE_Mut_2.optimize().status)
+	# print(Toy_Model_NE_Mut_2.exchanges)	

@@ -41,7 +41,14 @@ class NN(nn.Module):
         out=self.output(out)
         return out
 
-
+def timer(func):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print(f"Finished {func.__name__} in {end - start} seconds")
+        return result
+    return wrapper
 
 class Model:
     """This class is a substitute for cobra model. It is used to completely remove LP solver from the solution.
@@ -165,7 +172,7 @@ class Environment:
     def reset(self):
         """ Resets the environment to its initial state."""
         self.state = self.initial_condition.copy()
-    
+    @timer
     def step(self):
         """ Performs a single step in the environment."""
         self.temp_actions=[]
@@ -435,6 +442,7 @@ def general_kinetic(x,y):
     return 0.1*x*y/(10+x)
 def general_uptake(c):
     return 20*(c/(c+20))
+
 
 
 

@@ -26,8 +26,6 @@ class NN(nn.Module):
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   )
         self.output=nn.Linear(hidden_dim,output_dim)
     
@@ -36,7 +34,16 @@ class NN(nn.Module):
         out=self.hidden(out)
         out=self.output(out)
         return out
-
+def timer(active:bool=True):
+    def timed(func):
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            result = func(*args, **kwargs)
+            end = time.time()
+            print(f"Finished {func.__name__} in {end - start} seconds")
+            return result
+        return wrapper
+    return timed
 
         
 
@@ -452,3 +459,5 @@ def run_episode_single(env):
             batch_log_probs[ag.name].append(ag.log_prob)
             episode_rews[ag.name].append(r[ind])
     return batch_obs,batch_acts, batch_log_probs, episode_rews
+
+
