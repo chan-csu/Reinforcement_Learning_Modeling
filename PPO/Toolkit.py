@@ -126,7 +126,8 @@ class Environment:
         new_species=[item for item in species if item not in self.species]
         if len(new_species)>0:
             warn("The following species are not in the community: {}".format(new_species))
-            self.species.extend(new_species)
+            self.species.extend(list(set(new_species)))
+        
     
     
     def reset(self):
@@ -379,6 +380,8 @@ def general_kinetic(x,y):
     return 0.1*x*y/(10+x)
 def general_uptake(c):
     return 20*(c/(c+20))
+def mass_transfer(x,y):
+    return 0.01*(x-y)
 
 def rollout(env):
     batch_obs={key.name:[] for key in env.agents}
