@@ -26,6 +26,14 @@ class NN(nn.Module):
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
+                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   )
         self.output=nn.Linear(hidden_dim,output_dim)
     
@@ -272,7 +280,7 @@ class Agent:
         self.alpha = alpha
         self.actor_network = actor_network
         self.critic_network = critic_network
-        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.05)
+        self.cov_var = torch.full(size=(len(self.actions),), fill_value=0.1)
         self.cov_mat = torch.diag(self.cov_var)
    
     def get_actions(self,observation:np.ndarray):
@@ -391,9 +399,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        # batch.append(run_episode_single(env))
-        batch.append(run_episode.remote(env))
-    batch=ray.get(batch)
+        batch.append(run_episode_single(env))
+    #     batch.append(run_episode.remote(env))
+    # batch=ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])

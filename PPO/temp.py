@@ -34,6 +34,7 @@ knockouts_gene_names = [
 exchange_reactions = {
     "trpC": "EX_trp__L_e",
     "pheA": "EX_phe__L_e",
+    "tyrA": "EX_tyr__L_e",
 }
 
 exchange_species = {}
@@ -63,7 +64,7 @@ ic={
     key.lstrip("EX_"):10000 for key,val in model_base.medium.items() 
 }
 
-ic['glc__D_e']=50
+ic['glc__D_e']=100
 ic['agent1']=0.05
 ic['agent2']=0.05
 for ko in unique_knockouts:
@@ -101,7 +102,7 @@ for ko in unique_knockouts:
             exchange_mets[ko[0]],
             exchange_mets[ko[1]],
         ],
-        actions=[exchange_reactions[ko[0]], exchange_reactions[ko[1]]],
+        actions=[exchange_reactions[ko[0]], exchange_reactions[ko[1]],"EX_tyr__L_e"  ],
         gamma=1,
     )
     agent2 = tk.Agent(
@@ -122,7 +123,7 @@ for ko in unique_knockouts:
             exchange_mets[ko[0]],
             exchange_mets[ko[1]],
         ],
-        actions=[exchange_reactions[ko[0]], exchange_reactions[ko[1]]],
+        actions=[exchange_reactions[ko[0]], exchange_reactions[ko[1]],"EX_tyr__L_e"],
         gamma=1,
     )
 
@@ -144,6 +145,8 @@ for ko in unique_knockouts:
 
     if not os.path.exists(f"Results/{env.name}"):
         os.makedirs(f"Results/{env.name}")
+### The next block will train the actor network to output -1 for all actions, so that 
+### the agents start like FBA
 
 for batch in range(env.number_of_batches):
 	
@@ -153,9 +156,9 @@ for batch in range(env.number_of_batches):
 		A_k = batch_rtgs[agent.name] - V.detach()   
 		A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5) 
 		if batch==0:
-			rich.print("[bold yellow] Hold on, bringing the creitc network to range...[/bold yellow]")
-			err=21
-			while err>20:
+			rich.print("[bold yellow] Hold on, bringing the networks to range...[/bold yellow]")
+			err=51
+			while err>50:
 				V, _= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
 				critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
 				agent.optimizer_value_.zero_grad()
@@ -176,7 +179,7 @@ for batch in range(env.number_of_batches):
 				agent.optimizer_policy_.step()
 				agent.optimizer_value_.zero_grad()
 				critic_loss.backward()
-				agent.optimizer_value_.step()                                                            	
+				agent.optimizer_value_.step()                                               	
 	if batch%500==0:		
 		with open(f"Results/{env.name}/{env.name}_{batch}.pkl", 'wb') as f:
 			pickle.dump(env, f)
