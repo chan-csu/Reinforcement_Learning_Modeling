@@ -6,7 +6,7 @@ import random
 import torch
 import torch.nn as nn
 from collections import deque,namedtuple
-from torch.distributions import MultivariateNormal
+from torch.distributions import MultivariateNormal,Normal
 import time
 import ray
 import pandas as pd
@@ -19,8 +19,6 @@ class NN(nn.Module):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -160,28 +158,20 @@ class Environment:
                 if M.a[index]<0:
                 
                     M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],M.model.reactions[M.actions[index]].lower_bound)
-                    # M.model.reactions[M.actions[index]].lower_bound=M.a[index]*M.model.reactions[M.actions[index]].lower_bound
 
                 else:
                     M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
                 
-                # M.model.reactions[M.actions[index]].upper_bound=M.model.reactions[M.actions[index]].lower_bound+0.00001
             Sols[i] = self.agents[i].model.optimize()
-            # self.agents[i].feasibility_optimizer_.zero_grad()
             if Sols[i].status == 'infeasible':
                 self.agents[i].reward=-1
                 dCdt[i] = 0
-                # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
-                # l=cross_entropy_loss(pred,torch.FloatTensor([0,1]))
+
             
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
                 self.agents[i].reward =Sols[i].objective_value*self.state[i]
-                # pred=self.agents[i].feasibility_network_(torch.cat([torch.FloatTensor(self.state[self.agents[i].observables]),torch.FloatTensor(self.agents[i].a)]))
-                # l=cross_entropy_loss(pred,torch.FloatTensor([1,0]))
-            # l.backward()
-            # self.agents[i].feasibility_optimizer_.step()
-        # Handling the exchange reaction balances in the community
+
         for i in range(self.mapping_matrix["Mapping_Matrix"].shape[0]):
         
             for j in range(len(self.agents)):
@@ -252,6 +242,7 @@ class Agent:
                 observables:list[str],
                 gamma:float,
                 clip:float=0.01,
+                actor_var:float=0.1,
                 grad_updates:int=1,
                 epsilon:float=0.01,
                 lr_actor:float=0.001,
@@ -272,6 +263,7 @@ class Agent:
         self.general_uptake_kinetics=general_uptake
         self.tau = tau
         self.clip = clip
+        self.actor_var = actor_var
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
         self.buffer_sample_size = buffer_sample_size
@@ -288,16 +280,19 @@ class Agent:
         Gets the actions and their probabilities for the agent.
         """
         mean = self.actor_network_(torch.tensor(observation, dtype=torch.float32)).detach()
-        dist = MultivariateNormal(mean, self.cov_mat)
+        # dist = MultivariateNormal(mean, self.actor_var)(mean, self.cov_mat)
+        dist = Normal(mean, self.actor_var)
         action = dist.sample()
-        log_prob = dist.log_prob(action)
+        log_prob =torch.sum(dist.log_prob(action))        # log_prob = dist.log_prob(action)
         return action.detach().numpy(), log_prob
    
     def evaluate(self, batch_obs,batch_acts):
         V = self.critic_network_(batch_obs).squeeze()
         mean = self.actor_network_(batch_obs)
-        dist = MultivariateNormal(mean, self.cov_mat)
-        log_probs = dist.log_prob(batch_acts)
+        # dist = MultivariateNormal(mean, self.cov_mat)
+        dist = Normal(mean, self.actor_var)
+        log_probs = torch.sum(dist.log_prob(batch_acts),dim=1)
+
         return V, log_probs 
     
     def compute_rtgs(self, batch_rews):
@@ -399,9 +394,9 @@ def rollout(env):
     batch_rtgs = {key.name:[] for key in env.agents}
     batch=[]
     for ep in range(env.episodes_per_batch):
-        batch.append(run_episode_single(env))
-    #     batch.append(run_episode.remote(env))
-    # batch=ray.get(batch)
+        # batch.append(run_episode_single(env))
+        batch.append(run_episode.remote(env))
+    batch=ray.get(batch)
     for ep in range(env.episodes_per_batch):
         for ag in env.agents:
             batch_obs[ag.name].extend(batch[ep][0][ag.name])
