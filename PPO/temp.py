@@ -63,7 +63,8 @@ for ko_gene in knockouts_gene_names:
     for gene in test_model.genes:
         if gene.name == ko_gene:
             gene_ids[ko_gene] = gene.id
-            break
+
+            
 
 
 knockouts = set()
@@ -74,17 +75,17 @@ for i in combinations(knockouts_gene_names, 2):
 unique_knockouts = [tuple(i) for i in knockouts]
 
 ic={
-    key.lstrip("EX_"):10000 for key,val in model_base.medium.items() 
+    key.lstrip("EX_"):2 for key,val in model_base.medium.items() 
 }
 
 ic['glc__D_e']=500
-ic['agent1']=0.01
-ic['agent2']=0.01
-for ko in unique_knockouts:
+ic['agent1']=0.1
+ic['agent2']=0.1
+for ko in [("tyrA","pheA")]:
     model1 = model_base.copy()
     model2 = model_base.copy()
-    model1.remove_reactions(model1.genes.get_by_id(gene_ids[ko[0]]).reactions)
-    model2.remove_reactions(model2.genes.get_by_id(gene_ids[ko[1]]).reactions)
+    model1.remove_reactions([model1.reactions.get_by_id('PPND')]) ## Tyrosine Mutant
+    model2.remove_reactions([model2.reactions.get_by_id('PPNDH')]) ## Phenylalanine Mutant
     model1.exchange_reactions = tuple([model1.reactions.index(i) for i in model1.exchanges])
     model2.exchange_reactions = tuple([model2.reactions.index(i) for i in model2.exchanges])
     model1.biomass_ind=model1.reactions.index("BIOMASS_Ec_iJO1366_core_53p95M")
@@ -105,8 +106,8 @@ for ko in unique_knockouts:
         clip=0.1,
         lr_actor=0.0001,
         lr_critic=0.001,
-        actor_var=0.5,
-        grad_updates=4,
+        actor_var=0.1,
+        grad_updates=1,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
         observables=[
@@ -126,8 +127,8 @@ for ko in unique_knockouts:
         clip=0.1,
         lr_actor=0.0001,
         lr_critic=0.001,
-        grad_updates=4,
-        actor_var=0.5,
+        grad_updates=1,
+        actor_var=0.1,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
         observables=[
@@ -139,6 +140,10 @@ for ko in unique_knockouts:
         actions=[i for i in exchange_reactions.values()],
         gamma=1,
     )
+    constants=list(ic.keys())
+    constants.remove("agent1")
+    constants.remove("agent2")
+    constants.remove("glc__D_e")
 
     env = tk.Environment(
         ko_name,
@@ -150,8 +155,9 @@ for ko in unique_knockouts:
         max_c={},
         dt=0.2,
         episode_time=20,  ##TOBECHANGED
-        number_of_batches=5000,  ##TOBECHANGED
+        number_of_batches=10000,  ##TOBECHANGED
         episodes_per_batch=4,
+        constant=constants,
     )
 
     env.rewards = {agent.name: [] for agent in env.agents}
@@ -185,8 +191,8 @@ for ko in unique_knockouts:
             A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-5) 
             if batch==0:
                 rich.print("[bold yellow] Hold on, bringing the networks to range...[/bold yellow]")
-                err=51
-                while err>50:
+                err=101
+                while err>100:
                     V, _= agent.evaluate(batch_obs[agent.name],batch_acts[agent.name])
                     critic_loss = nn.MSELoss()(V, batch_rtgs[agent.name])
                     agent.optimizer_value_.zero_grad()
@@ -208,11 +214,8 @@ for ko in unique_knockouts:
                     agent.optimizer_value_.zero_grad()
                     critic_loss.backward()
                     agent.optimizer_value_.step()   
-		# Gradualy reduce the variance of the action distribution
-        if batch%100==0:
-            for agent in env.agents:
-                agent.actor_var=agent.actor_var*0.9	
-        if batch%500==0:		
+
+        if batch%500==0:
             with open(f"Results/{env.name}/{env.name}_{batch}.pkl", 'wb') as f:
                 pickle.dump(env, f)
             with open(f"Results/{env.name}/observations_{batch}.pkl", 'wb') as f:

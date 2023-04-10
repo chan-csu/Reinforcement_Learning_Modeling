@@ -15,17 +15,10 @@ class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.ReLU ):
+    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.Tanh ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
-                                  nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
                                   nn.Linear(hidden_dim,hidden_dim),activation(),
@@ -81,6 +74,7 @@ class Environment:
                 max_c:dict={},
                 episodes_per_batch:int=10,
                 training:bool=True,
+                constant:list=[]
                 
                 
                 ) -> None:
@@ -89,6 +83,7 @@ class Environment:
         self.num_agents = len(agents)
         self.extracellular_reactions = extracellular_reactions
         self.dt = dt
+        self.constant=constant
         self.episode_length = int(episode_time/dt)
         self.episodes_per_batch=episodes_per_batch
         self.number_of_batches=number_of_batches
@@ -111,6 +106,7 @@ class Environment:
         self.set_observables()
         self.set_networks()
         self.reset()
+        
         print("Environment {} created successfully!.".format(self.name))
 
     
@@ -154,11 +150,8 @@ class Environment:
 
 
             for index,flux in enumerate(M.actions):
-
                 if M.a[index]<0:
-                
                     M.model.reactions[M.actions[index]].lower_bound=max(M.a[index],M.model.reactions[M.actions[index]].lower_bound)
-
                 else:
                     M.model.reactions[M.actions[index]].lower_bound=min(M.a[index],10)
                 
@@ -166,8 +159,6 @@ class Environment:
             if Sols[i].status == 'infeasible':
                 self.agents[i].reward=-1
                 dCdt[i] = 0
-
-            
             else:
                 dCdt[i] += Sols[i].objective_value*self.state[i]
                 self.agents[i].reward =Sols[i].objective_value*self.state[i]
@@ -191,7 +182,10 @@ class Environment:
                 dCdt[self.species.index(metabolite)]+=ex_reaction["reaction"][metabolite]*rate
         dCdt+=self.dilution_rate*(self.inlet_conditions-self.state)
         C=self.state.copy()
+        for item in self.constant:
+            dCdt[self.species.index(item)]=0
         self.state += dCdt*self.dt
+
         Cp=self.state.copy()
         return C,list(i.reward for i in self.agents),list(i.a for i in self.agents),Cp
 
@@ -382,7 +376,8 @@ def simulate(env,episodes=200,steps=1000):
 def general_kinetic(x,y):
     return 0.1*x*y/(10+x)
 def general_uptake(c):
-    return 20*(c/(c+20))
+    return 10*(c/(c+10))
+
 def mass_transfer(x,y):
     return 0.01*(x-y)
 
