@@ -75,7 +75,7 @@ for i in combinations(knockouts_gene_names, 2):
 unique_knockouts = [tuple(i) for i in knockouts]
 
 ic={
-    key.lstrip("EX_"):2 for key,val in model_base.medium.items() 
+    key.lstrip("EX_"):3 for key,val in model_base.medium.items() 
 }
 
 ic['glc__D_e']=500
@@ -106,7 +106,7 @@ for ko in [("tyrA","pheA")]:
         clip=0.1,
         lr_actor=0.0001,
         lr_critic=0.001,
-        actor_var=0.1,
+        actor_var=0.05,
         grad_updates=1,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
@@ -128,7 +128,7 @@ for ko in [("tyrA","pheA")]:
         lr_actor=0.0001,
         lr_critic=0.001,
         grad_updates=1,
-        actor_var=0.1,
+        actor_var=0.05,
         optimizer_actor=torch.optim.Adam,
         optimizer_critic=torch.optim.Adam,
         observables=[
