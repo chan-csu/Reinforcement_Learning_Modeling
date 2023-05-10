@@ -146,7 +146,7 @@ for ko in [("tyrA","pheA")]:
     constants.remove("glc__D_e")
 
     env = tk.Environment(
-        ko_name,
+        "IJO1366-Tyr-Phe-Auxotrophs" ,
         agents=[agent1, agent2],
         dilution_rate=0,
         extracellular_reactions=[],

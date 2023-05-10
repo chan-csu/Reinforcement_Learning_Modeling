@@ -15,7 +15,7 @@ class NN(nn.Module):
     """
     This is a base class for all networks created in this algorithm
     """
-    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.Tanh ):
+    def __init__(self,input_dim,output_dim,hidden_dim=20,activation=nn.ReLU ):
         super(NN,self).__init__()
         self.inlayer=nn.Sequential(nn.Linear(input_dim,hidden_dim),activation())
         self.hidden=nn.Sequential(nn.Linear(hidden_dim,hidden_dim),activation(),
