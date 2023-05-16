@@ -4,6 +4,18 @@ Parsa Ghadermazi: Parsa.ghadermazi@colostate.edu
 
 SPM-DFBA is an algoritm for inferring microbial interactions by modeling microbial metabolism in a community as a decision making process, a markov decision process more specifically, where individual agents learn strategies that lead to their long-term survival by trying different strategies and improve their strategies according to proximal policy optimization algorithm.
 
+------------
+**Why reinforcement learning?**
+
+My main motivation for creating this framework was one of my favorite experiments in microbiology!
+
+[![antibiotic](https://img.youtube.com/vi/plVk4NVIUh8/0.jpg)](https://youtu.be/plVk4NVIUh8)
+
+How can we predict such behaviors by relying only on genotype of the cells and minimal phenotypic data? The answer is not very strightforward and here is why:
+
+Flux balance analysis(FBA) is a commonly-used approach in system biology to determine the rate of each biochemical reaction within the cell. In this approach the cells are modeled as constant-volume bioreactors and they can exchange metabolites to the outside. Writing mass balance equations across this "bioreactor" results in a system of ordinary differential equtions(ODEs) that describes the concentration profiles in the reactor over time. The issue with solving such system of ODEs is that we need the kinetic expression and the kinetic parameters for every reaction in this system. This is currently near impossible to do! Flux balance analysis deals with this problem by making a simplifying, yet somewhat realistic, assumption that the internal flux of the cells change much faster than the changes in the environment and the cells can achieve a state of homeostasis. This means that we can assume that the systems is at steady state and we can convert the system of ODE into a system of equations. However, mass balance itself 
+
+
 The scripts are written in a way to make reproducing the results and simulating new cases as easy as possible, similar to OpenAI gym framework. 
 
 Toolkit.py includes all classes and functions that are required for defining new agents and environment. After successfully defining the environment, performing DFBA is straightforward. 
