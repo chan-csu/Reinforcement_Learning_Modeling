@@ -1,14 +1,140 @@
 """This module contains a variety of kinetic models to be used"""
-
 import numpy as np
 import scipy.integrate as integrate
 
+TOY_REACTIONS = [
+    "S_import",
+    "S_to_I1",
+    "I1_to_P",
+    "S_to_NTP",
+    "NTP_to_NA",
+    "I1_to_Li",
+    "I1_to_AA",
+    "AA_to_e",
+    "P_export",
+    "AA_and_li_to_W",
+    "e_to_t1",
+    "e_to_e1",
+    "e_to_e2",
+    "e_to_e3",
+    "e_to_e4",
+    "e_to_e5",
+    "e_to_e6",
+    "e_to_e7",
+    "e_to_e8",
+    "e_to_t2",
+    ]
+
+TOY_SPECIES = [
+    "S",
+    "I1",
+    "P",
+    "NTP",
+    "NA",
+    "Li",
+    "AA",
+    "e",
+    "t1",
+    "t2",
+    "e1",
+    "e2",
+    "e3",
+    "e4",
+    "e5",
+    "e6",
+    "e7",
+    "e8",
+    "E",
+]
+    
+class Shape:
+    """Objects of this class represent the shape of a cell"""
+    def __init__(self, name:str,dimensions:tuple[dict[str,float]]):
+        self.name = name
+        self.dimensions = dimensions
+        for key, value in dimensions.items():
+            setattr(self, key, value)
+    
+    def __str__(self) -> str:
+        dim_print=""
+        for key, value in self.__dict__.items():
+            dim_print += f"{key} = {value}\n"
+        return f"{self.name} shape with dimensions:\n{dim_print}"
+    
+    def __repr__(self) -> str:
+        return f"Shape({self.name},{self.dimensions})"
+    
+    @property
+    def volume(self)->float:
+        pass
+    
+    @property
+    def area(self)->float:
+        pass
+    
+
+class Sphere(Shape):
+    """Objects of this class represent a sphere. 
+    NOTE: This is hollow sphere. So, the constructor takes in a dictionary with the following
+    keys: r,t. r is the radius of the sphere and t is the thickness of the sphere.
+    The assumption in this class is that the thickness is uniform and throughout the sphere.
+    """
+    def __init__(self, dimensions:dict[str,float])->None:
+        if {"r,t"} != set(dimensions.keys()):
+            raise ValueError("Sphere shape requires only parameter r")
+        super().__init__("Sphere", dimensions)
+    
+    @property
+    def volume(self)->float:
+        return 4/3*np.pi*self.r**3
+    
+    @property
+    def area(self)->float:
+        return 4*np.pi*self.r**2
+    
+    def calculate_differentials(self,dv:float)->dict[str,float]:
+        """V=4*pi*[3rt^3+3t^2r+t^3] this equation should be used:
+        dV=4*pi*[6rt+3t^2]*dr
+        dr=dv/(4*pi*[6rt+3t^2])
+        """
+        diffs={k:0 for k in self.dimensions.keys()}
+        diffs.update({"r":dv/(4*np.pi*(6*self.r*self.t + 3*self.t**2))})
+        return diffs
+
+
+
+
+
 class Cell:
     """Objects of this class represent the biological function of a Cell"""
-    def __init__(self, name:str, stoichiometry:callable, parameters:dict):
+    def __init__(self,
+                 name:str,
+                 stoichiometry:callable, 
+                 parameters:dict,
+                 reactions:list,
+                 compounds:list,
+                 shape:Shape):
         self.name = name
         self.stoichiometry = stoichiometry
         self.parameters = parameters
+        self.shape=shape
+        self.reactions = reactions
+        self.compounds = compounds
+        self.state_variables = self.get_state_variables()
+    
+    def get_state_variables(self)->list:
+        """
+        This method returns the state variables of the cell. The state variables are the compounds and the shape variables\
+        
+        """
+        state_variables = self.compounds.copy()
+        shape_variables = [key for key in self.shape.dimensions.keys()]
+        state_variables.extend(shape_variables)
+        return state_variables
+class Environment:
+    pass
+    
+        
 
 class Kinetic:
     """Objects of this class represent a kinetic model"""
@@ -55,65 +181,7 @@ class PingPong(Kinetic):
         return self.vm*a*b/(self.ka*a + self.kb*b + self.ka*self.kb)
 
 
-class Shape:
-    """Objects of this class represent the shape of a cell"""
-    def __init__(self, name:str,dimensions:tuple[dict[str,float]]):
-        self.name = name
-        self.dimensions = dimensions
-        for key, value in dimensions.items():
-            setattr(self, key, value)
-    
-    def __str__(self) -> str:
-        dim_print=""
-        for key, value in self.__dict__.items():
-            dim_print += f"{key} = {value}\n"
-        return f"{self.name} shape with dimensions:\n{dim_print}"
-    
-    def __repr__(self) -> str:
-        return f"Shape({self.name},{self.dimensions})"
-    
-    @property
-    def volume(self)->float:
-        pass
-    
-    @property
-    def area(self)->float:
-        pass
-    
-    
-    
-class Sphere(Shape):
-    """Objects of this class represent a sphere. 
-    NOTE: This is hollow sphere. So, the constructor takes in a dictionary with the following
-    keys: r,t. r is the radius of the sphere and t is the thickness of the sphere.
-    The assumption in this class is that the thickness is uniform and throughout the sphere.
-    """
-    def __init__(self, dimensions:dict[str,float])->None:
-        if {"r,t"} != set(dimensions.keys()):
-            raise ValueError("Sphere shape requires only parameter r")
-        super().__init__("Sphere", dimensions)
-    
-    @property
-    def volume(self)->float:
-        return 4/3*np.pi*self.r**3
-    
-    @property
-    def area(self)->float:
-        return 4*np.pi*self.r**2
-    
-    def calculate_differentials(self,dv:float)->dict[str,float]:
-        """V=4*pi*[3rt^3+3t^2r+t^3] this equation should be used:
-        dV=4*pi*[6rt+3t^2]*dr
-        dr=dv/(4*pi*[6rt+3t^2])
-        """
-        diffs={k:0 for k in self.dimensions.keys()}
-        diffs.update({"r":dv/(4*np.pi*(6*self.r*self.t + 3*self.t**2))})
-        return diffs
-    
-
-    
-        
-def toy_model_stoichiometry(x:np.ndarray,params:dict)->np.ndarray:
+def toy_model_stoichiometry(model:Cell)->np.ndarray:
     """This function returns the stoichiometry of the toy model. Here is a look at the governing rules:
     r[1]: S -> S_in                     ::: r=PingPong(ka1, kb1, kab1, vm1)([S]   ,[t1])
     r[2]: S_in -> p21 I_1 + p22 E       ::: r=PingPong(ka2, kb2, kab2, vm2)([S_in],[e2])
@@ -140,12 +208,31 @@ def toy_model_stoichiometry(x:np.ndarray,params:dict)->np.ndarray:
     r[]:e->e8
     r[]:e->t2
     ____________________________________________________________________________________________
-    Two quantities to track:
-    Volume:
-    Area:
-    
-
-    
     
     """
+    s=np.zeros((len(model.state_variables),len(model.reactions)))
+    s[[model.state_variables.index("S")],model.reactions.index("S_import")] = 1
+    s[map(model.state_variables.index,["S","I1","E"]),model.reactions.index("S_to_I1")] = [-1,model.parameters["p21"],model.parameters["p22"]]
+    s[map(model.state_variables.index,["I1","P","E"]),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
+    s[map(model.state_variables.index,["S","E","NTP"]),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
+    s[map(model.state_variables.index,["NTP","NA"]),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
+    s[map(model.state_variables.index,["I1","E","Li"]),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
+    s[map(model.state_variables.index,["I1","E","AA"]),model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
+    s[map(model.state_variables.index,["AA","E","e"]),model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
+    s[[model.state_variables.index("P")],model.reactions.index("P_export")] = -1
+    s[map(model.state_variables.index,["AA","Li","W"]),model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r101"],1]
+    s[map(model.state_variables.index,["e","t1"]),model.reactions.index("e_to_t1")] = [-1,1]
+    s[map(model.state_variables.index,["e","e1"]),model.reactions.index("e_to_e1")] = [-1,1]
+    s[map(model.state_variables.index,["e","e2"]),model.reactions.index("e_to_e2")] = [-1,1]
+    s[map(model.state_variables.index,["e","e3"]),model.reactions.index("e_to_e3")] = [-1,1]
+    s[map(model.state_variables.index,["e","e4"]),model.reactions.index("e_to_e4")] = [-1,1]
+    s[map(model.state_variables.index,["e","e5"]),model.reactions.index("e_to_e5")] = [-1,1]
+    s[map(model.state_variables.index,["e","e6"]),model.reactions.index("e_to_e6")] = [-1,1]
+    s[map(model.state_variables.index,["e","e7"]),model.reactions.index("e_to_e7")] = [-1,1]
+    s[map(model.state_variables.index,["e","e8"]),model.reactions.index("e_to_e8")] = [-1,1]
+    s[map(model.state_variables.index,["e","t2"]),model.reactions.index("e_to_t2")] = [-1,1]
+    return s
+
     
+def toy_model_ode(t, y, model:Cell)->np.ndarray:
+    pass
