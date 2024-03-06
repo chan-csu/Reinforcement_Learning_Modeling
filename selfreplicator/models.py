@@ -78,6 +78,8 @@ class Shape:
     
     def calculate_differentials(self,dv:float)->dict[str,float]:
         pass
+    def set_dim_from_volume(self,v:float)->None:
+        pass
     
 
 class Sphere(Shape):
@@ -104,6 +106,18 @@ class Sphere(Shape):
         for key, value in dimensions.items():
             setattr(self, key, value)
     
+    def get_dimensions(self)->dict[str,float]:
+        return {key:getattr(self,key) for key in self.dimensions.keys()}
+        
+    
+    def set_dim_from_volume(self,v:float)->None:
+        self.r = (3*v/(4*np.pi))**(1/3)
+        
+    
+
+    
+
+    
     def calculate_differentials(self,dv:float)->dict[str,float]:
         """V=4*pi*[3rt^3+3t^2r+t^3] this equation should be used:
         dV=4*pi*[6rt+3t^2]*dr
@@ -127,7 +141,8 @@ class Cell:
                  parameters:dict,
                  reactions:list,
                  compounds:list,
-                 shape:Shape):
+                 shape:Shape,
+                 split_volume:float=0.1):
         self.name = name
         self.stoichiometry = stoichiometry
         self.ode_sys = ode_sys
@@ -137,6 +152,11 @@ class Cell:
         self.compounds = compounds
         self.state_variables = self.get_state_variables()
         self.kinetics={}
+        self.number=1
+        self.split_volume=split_volume
+        self.cell_metabolites=[i for i in self.compounds if not i.endswith("_env")]
+        self.env_metabolites=[self.state_variables.index(i) for i in self.compounds if i.endswith("_env")]
+        
     
     def get_state_variables(self)->list:
         """
@@ -148,6 +168,14 @@ class Cell:
         state_variables.extend(shape_variables)
         state_variables.append("Volume")
         return state_variables
+    
+    
+    def can_double(self,state:np.ndarray,time:float)->bool:
+        if state[self.state_variables.index("Volume")]>=self.split_volume:
+            return True
+        else:
+            return False
+    
 class Environment:
     pass
     
@@ -242,15 +270,14 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     s[list(map(model.state_variables.index,["S",
     "I1", "E"])),model.reactions.index("S_to_I1")] = [-1,model.parameters["p21"],model.parameters["p22"]]
     
-    s[list(map(model.state_variables.index,["I1",
-    "P",
-    "E"])),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
-    s[list(map(model.state_variables.index,["S","E",
-    "NTP"])),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
+    s[list(map(model.state_variables.index,["I1","P","E"])),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
+    
+    s[list(map(model.state_variables.index,["S","E","NTP"])),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
+    
     s[list(map(model.state_variables.index,["NTP","NA"])),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
-    s[list(map(model.state_variables.index,["I1",
-    "E",
-    "Li"])),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
+    
+    s[list(map(model.state_variables.index,["I1","E","Li"])),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
+    
     s[list(map(model.state_variables.index,["I1","E","AA"])),
       model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
     
@@ -277,8 +304,21 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     
 def toy_model_ode(t, y, model:Cell)->np.ndarray:
     ### First we update the dimensions of the cell
+    y[y<0]=0
     model.shape.set_dimensions({key:y[model.state_variables.index(key)] for key in model.shape.dimensions.keys()})
     y[model.state_variables.index("Volume")]=model.shape.volume
+    
+    if model.can_double(y,t):
+        model.shape.set_dim_from_volume(model.shape.volume/2)
+        for dim,val in model.shape.get_dimensions().items():
+            y[model.state_variables.index(dim)] = val
+        
+        for i in model.cell_metabolites:
+            y[model.state_variables.index(i)]=y[model.state_variables.index(i)]/2
+        
+        model.number*=2
+                
+        
     ### Now we calculate the fluxes for each reaction
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = model.kinetics.setdefault("S_import",
@@ -407,7 +447,21 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
     for dim in model.shape.dimensions.keys():
         v[model.state_variables.index(dim)] = model.shape.calculate_differentials(dvdt)[dim]
     
+    for i in model.env_metabolites:
+        v[i]*=model.number
+    
+
+    
     return v
+
+def forward_euler(ode:callable,initial_conditions:np.ndarray,t:np.ndarray,args:tuple)->np.ndarray:
+    """This function solves an ordinary differential equation using the forward Euler method"""
+    y=np.zeros((len(initial_conditions),len(t)))
+    y[:,0]=initial_conditions
+    dt=t[1]-t[0]
+    for i in range(1,len(t)):
+        y[:,i]=y[:,i-1]+dt*ode(t[i-1],y[:,i-1],*args)
+    return y
 
 if __name__ == "__main__":
     s=Sphere({"r":0.1,"t":0.5})
@@ -437,7 +491,7 @@ if __name__ == "__main__":
                "ka6":1,
                "kb6":1,
                "kab6":1,
-               "vm6":0.001,
+               "vm6":0.1,
                "ka7":1,
                "kb7":1,
                "kab7":1,
@@ -460,7 +514,7 @@ if __name__ == "__main__":
                "k_e3":1,
                "k_e4":1,
                "k_e5":1,
-               "k_e6":1,
+               "k_e6":10,
                "k_e7":1,
                "k_e8":1,
                "k_t2":1,
@@ -479,17 +533,23 @@ if __name__ == "__main__":
                "p82":1,
                "r101":-1,
                 "r102":-1,
-               "lipid_density":0.001},
+               "lipid_density":0.05},
               TOY_REACTIONS,
               TOY_SPECIES,
-              s)
+              s,
+              split_volume=0.006)
     c0=np.ones(len(cell.state_variables))/100
     c0[cell.state_variables.index("S_env")]=10
     c0[cell.state_variables.index("r")]=s.r
     c0[cell.state_variables.index("Volume")]=s.volume
-    sol=integrate.solve_ivp(toy_model_ode,(0,1000),c0,args=(cell,),method="RK23",t_eval=np.linspace(0,1000,1000))
-    sol_df=pd.DataFrame(sol.y,index=cell.state_variables,columns=sol.t)
-    sol_df=sol_df/sol_df.loc["Volume"]
+    # sol=integrate.solve_ivp(toy_model_ode,(0,1000),c0,args=(cell,),method="RK23",t_eval=np.linspace(0,1000,1000))
+    # sol_df=pd.DataFrame(sol.y,index=cell.state_variables)
+    sol=forward_euler(toy_model_ode,c0,np.linspace(0,600,10000),(cell,))
+    sol_df=pd.DataFrame(sol,index=cell.state_variables)
+
+    
+    sol_df.loc[[i for i in sol_df.index if i not in {"Volume","S_env","r","t"}]]=sol_df.loc[[i for i in sol_df.index if i not in {"Volume","S_env"}]]/sol_df.loc["Volume"]
+    print(cell.number)
     px.line(sol_df.T).show()
 
         
