@@ -26,6 +26,7 @@ TOY_REACTIONS = [
     ]
 
 TOY_SPECIES = [
+    "S_env",
     "S",
     "I1",
     "P",
@@ -83,7 +84,7 @@ class Sphere(Shape):
     The assumption in this class is that the thickness is uniform and throughout the sphere.
     """
     def __init__(self, dimensions:dict[str,float])->None:
-        if {"r,t"} != set(dimensions.keys()):
+        if {"r","t"} != set(dimensions.keys()):
             raise ValueError("Sphere shape requires only parameter r")
         super().__init__("Sphere", dimensions)
     
@@ -118,13 +119,15 @@ class Cell:
     """Objects of this class represent the biological function of a Cell"""
     def __init__(self,
                  name:str,
-                 stoichiometry:callable, 
+                 stoichiometry:callable,
+                 ode_sys:callable, 
                  parameters:dict,
                  reactions:list,
                  compounds:list,
                  shape:Shape):
         self.name = name
         self.stoichiometry = stoichiometry
+        self.ode_sys = ode_sys
         self.parameters = parameters
         self.shape=shape
         self.reactions = reactions
@@ -231,26 +234,51 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     
     """
     s=np.zeros((len(model.state_variables),len(model.reactions)))
-    s[[model.state_variables.index("S")],model.reactions.index("S_import")] = 1
-    s[map(model.state_variables.index,["S","I1","E"]),model.reactions.index("S_to_I1")] = [-1,model.parameters["p21"],model.parameters["p22"]]
-    s[map(model.state_variables.index,["I1","P","E"]),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
-    s[map(model.state_variables.index,["S","E","NTP"]),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
-    s[map(model.state_variables.index,["NTP","NA"]),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
-    s[map(model.state_variables.index,["I1","E","Li"]),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
-    s[map(model.state_variables.index,["I1","E","AA"]),model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
-    s[map(model.state_variables.index,["AA","E","e"]),model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
+    s[[model.state_variables.index("S_env"),model.state_variables.index("S")],model.reactions.index("S_import")] = [-1,1]
+    s[map(model.state_variables.index,["S",
+    "I1",
+    "E"]),model.reactions.index("S_to_I1")] = [-1,model.parameters["p21"],model.parameters["p22"]]
+    s[map(model.state_variables.index,["I1",
+    "P",
+    "E"]),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
+    s[map(model.state_variables.index,["S",
+    "E",
+    "NTP"]),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
+    s[map(model.state_variables.index,["NTP",
+    "NA"]),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
+    s[map(model.state_variables.index,["I1",
+    "E",
+    "Li"]),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
+    s[map(model.state_variables.index,["I1",
+    "E",
+    "AA"]),model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
+    s[map(model.state_variables.index,["AA",
+    "E",
+    "e"]),model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
     s[[model.state_variables.index("P")],model.reactions.index("P_export")] = -1
-    s[map(model.state_variables.index,["AA","Li","W"]),model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r101"],1]
-    s[map(model.state_variables.index,["e","t1"]),model.reactions.index("e_to_t1")] = [-1,1]
-    s[map(model.state_variables.index,["e","e1"]),model.reactions.index("e_to_e1")] = [-1,1]
-    s[map(model.state_variables.index,["e","e2"]),model.reactions.index("e_to_e2")] = [-1,1]
-    s[map(model.state_variables.index,["e","e3"]),model.reactions.index("e_to_e3")] = [-1,1]
-    s[map(model.state_variables.index,["e","e4"]),model.reactions.index("e_to_e4")] = [-1,1]
-    s[map(model.state_variables.index,["e","e5"]),model.reactions.index("e_to_e5")] = [-1,1]
-    s[map(model.state_variables.index,["e","e6"]),model.reactions.index("e_to_e6")] = [-1,1]
-    s[map(model.state_variables.index,["e","e7"]),model.reactions.index("e_to_e7")] = [-1,1]
-    s[map(model.state_variables.index,["e","e8"]),model.reactions.index("e_to_e8")] = [-1,1]
-    s[map(model.state_variables.index,["e","t2"]),model.reactions.index("e_to_t2")] = [-1,1]
+    s[map(model.state_variables.index,["AA",
+    "Li",
+    "W"]),model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r101"],1]
+    s[map(model.state_variables.index,["e",
+    "t1"]),model.reactions.index("e_to_t1")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e1"]),model.reactions.index("e_to_e1")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e2"]),model.reactions.index("e_to_e2")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e3"]),model.reactions.index("e_to_e3")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e4"]),model.reactions.index("e_to_e4")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e5"]),model.reactions.index("e_to_e5")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e6"]),model.reactions.index("e_to_e6")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e7"]),model.reactions.index("e_to_e7")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "e8"]),model.reactions.index("e_to_e8")] = [-1,1]
+    s[map(model.state_variables.index,["e",
+    "t2"]),model.reactions.index("e_to_t2")] = [-1,1]
     return s
 
     
@@ -260,123 +288,123 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
     ### Now we calculate the fluxes for each reaction
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = model.kinetics.setdefault("S_import",
-                                                                          PingPong(model.parameters["ka1"],
-                                                                                   model.parameters["kb1"],
-                                                                                   model.parameters["kab1"],
-                                                                                   model.parameters["vm1"]))\
+                                                                          PingPong({"ka": model.parameters["ka1"],
+                                                                                    "kb": model.parameters["kb1"],
+                                                                                    "kab":model.parameters["kab1"],
+                                                                                    "vm": model.parameters["vm1"]}))\
                                                                             (y[model.state_variables.index("S_env")],
                                                                              y[model.state_variables.index("t1")]/model.shape.area)*model.shape.area
     
     fluxes[model.reactions.index("S_to_I1")] = model.kinetics.setdefault("S_to_I1",
-                                                                        PingPong(model.parameters["ka2"],
-                                                                                 model.parameters["kb2"],
-                                                                                 model.parameters["kab2"],
-                                                                                 model.parameters["vm2"]))\
+                                                                        PingPong({"ka":  model.parameters["ka2"],
+                                                                                  "kb":  model.parameters["kb2"],
+                                                                                  "kab": model.parameters["kab2"],
+                                                                                  "vm":  model.parameters["vm2"]}))\
                                                                             (y[model.state_variables.index("S")]/model.shape.volume,
                                                                              y[model.state_variables.index("e2")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("I1_to_P")] = model.kinetics.setdefault("I1_to_P",
-                                                                          PingPong(model.parameters["ka3"],
-                                                                                   model.parameters["kb3"],
-                                                                                   model.parameters["kab3"],
-                                                                                   model.parameters["vm3"]))\
+                                                                          PingPong({"ka": model.parameters["ka3"],
+                                                                                    "kb": model.parameters["kb3"],
+                                                                                    "kab":model.parameters["kab3"],
+                                                                                    "vm": model.parameters["vm3"]}))\
                                                                              (y[model.state_variables.index("I1")]/model.shape.volume,
                                                                               y[model.state_variables.index("e3")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("S_to_NTP")] = model.kinetics.setdefault("S_to_NTP",
-                                                                            PingPong(model.parameters["ka4"], 
-                                                                                     model.parameters["kb4"], 
-                                                                                     model.parameters["kab4"], 
-                                                                                     model.parameters["vm4"]))\
+                                                                            PingPong({"ka":  model.parameters["ka4"], 
+                                                                                     "kb":  model.parameters["kb4"], 
+                                                                                     "kab": model.parameters["kab4"], 
+                                                                                     "vm":  model.parameters["vm4"]}))\
                                                                                 (y[model.state_variables.index("S")]/model.shape.volume,
                                                                                 y[model.state_variables.index("e4")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("NTP_to_NA")] = model.kinetics.setdefault("NTP_to_NA",
-                                                                            PingPong(model.parameters["ka5"],
-                                                                                     model.parameters["kb5"],
-                                                                                     model.parameters["kab5"],
-                                                                                     model.parameters["vm5"]))\
+                                                                            PingPong({"ka":  model.parameters["ka5"],
+                                                                                      "kb":   model.parameters["kb5"],
+                                                                                      "kab":  model.parameters["kab5"],
+                                                                                      "vm":   model.parameters["vm5"]}))\
                                                                                 (y[model.state_variables.index("NTP")]/model.shape.volume,
                                                                                  y[model.state_variables.index("e5")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("I1_to_Li")] = model.kinetics.setdefault("I1_to_Li",
-                                                                            PingPong(model.parameters["ka6"],
-                                                                                     model.parameters["kb6"],
-                                                                                     model.parameters["kab6"],
-                                                                                     model.parameters["vm6"]))\
+                                                                            PingPong({"ka":  model.parameters["ka6"],
+                                                                                      "kb":  model.parameters["kb6"],
+                                                                                      "kab": model.parameters["kab6"],
+                                                                                      "vm":  model.parameters["vm6"]}))\
                                                                                 (y[model.state_variables.index("I1")]/model.shape.volume,
                                                                                  y[model.state_variables.index("e6")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("I1_to_AA")] = model.kinetics.setdefault("I1_to_AA",
-                                                                            PingPong(model.parameters["ka7"],
-                                                                                     model.parameters["kb7"],
-                                                                                     model.parameters["kab7"],
-                                                                                     model.parameters["vm7"]))\
+                                                                            PingPong({  "ka": model.parameters["ka7"],
+                                                                                        "kb": model.parameters["kb7"],
+                                                                                        "kab":model.parameters["kab7"],
+                                                                                        "vm": model.parameters["vm7"]}))\
                                                                                 (y[model.state_variables.index("I1")]/model.shape.volume,
                                                                                  y[model.state_variables.index("e7")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("AA_to_e")] = model.kinetics.setdefault("AA_to_e",
-                                                                        PingPong(model.parameters["ka8"],
-                                                                                 model.parameters["kb8"],
-                                                                                 model.parameters["kab8"],
-                                                                                 model.parameters["vm8"]))\
+                                                                        PingPong({"ka":   model.parameters["ka8"],
+                                                                                  "kb":   model.parameters["kb8"],
+                                                                                  "kab":  model.parameters["kab8"],
+                                                                                  "vm":   model.parameters["vm8"]}))\
                                                                             (y[model.state_variables.index("AA")]/model.shape.volume,
                                                                              y[model.state_variables.index("e8")]/model.shape.volume)*model.shape.volume
                                                                             
     fluxes[model.reactions.index("P_export")] = model.kinetics.setdefault("P_export",
-                                                                        PingPong(
-                                                                            model.parameters["ka9"],
-                                                                            model.parameters["kb9"],
-                                                                            model.parameters["kab9"],
-                                                                            model.parameters["vm9"]))(y[model.state_variables.index("P")]/model.shape.volume,
+                                                                        PingPong({
+                                                                            "ka": model.parameters["ka9"],
+                                                                            "kb": model.parameters["kb9"],
+                                                                            "kab":model.parameters["kab9"],
+                                                                            "vm": model.parameters["vm9"]}))(y[model.state_variables.index("P")]/model.shape.volume,
                                                                             y[model.state_variables.index("t2")]/model.shape.area)*model.shape.area
                                                                             
     fluxes[model.reactions.index("AA_and_li_to_W")] = model.kinetics.setdefault("AA_and_li_to_W",
-                                                                                 PingPong(model.parameters["ka10"],
-                                                                                         model.parameters["kb10"],
-                                                                                         model.parameters["kab10"],
-                                                                                         model.parameters["vm10"]))\
+                                                                                 PingPong({ "ka": model.parameters["ka10"],
+                                                                                           "kb": model.parameters["kb10"],
+                                                                                           "kab":model.parameters["kab10"],
+                                                                                           "vm": model.parameters["vm10"]}))\
                                                                                   (y[model.state_variables.index("AA")]/model.shape.volume,
                                                                                     y[model.state_variables.index("Li")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_t1")] = model.kinetics.setdefault("e_to_t1",
-                                                                        Linear(model.parameters["k_t1"]))\
+                                                                        Linear({"k":model.parameters["k_t1"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_e1")] = model.kinetics.setdefault("e_to_e1",
-                                                                        Linear(model.parameters["k_e1"]))\
+                                                                        Linear({"k":model.parameters["k_e1"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
 
     fluxes[model.reactions.index("e_to_e2")] = model.kinetics.setdefault("e_to_e2",
-                                                                        Linear(model.parameters["k_e2"]))\
+                                                                        Linear({"k":model.parameters["k_e2"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_e3")] = model.kinetics.setdefault("e_to_e3",
-                                                                        Linear(model.parameters["k_e3"]))\
+                                                                        Linear({"k":model.parameters["k_e3"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_e4")] = model.kinetics.setdefault("e_to_e4",
-                                                                        Linear(model.parameters["k_e4"]))\
+                                                                        Linear({"k":model.parameters["k_e4"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
 
     fluxes[model.reactions.index("e_to_e5")] = model.kinetics.setdefault("e_to_e5",
-                                                                        Linear(model.parameters["k_e5"]))\
+                                                                        Linear({"k":model.parameters["k_e5"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_e6")] = model.kinetics.setdefault("e_to_e6",
-                                                                        Linear(model.parameters["k_e6"]))\
+                                                                        Linear({"k":model.parameters["k_e6"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_e7")] = model.kinetics.setdefault("e_to_e7",
-                                                                        Linear(model.parameters["k_e7"]))\
+                                                                        Linear({"k":model.parameters["k_e7"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_e8")] = model.kinetics.setdefault("e_to_e8",
-                                                                        Linear(model.parameters["k_e8"]))\
+                                                                        Linear({"k":model.parameters["k_e8"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
     
     fluxes[model.reactions.index("e_to_t2")] = model.kinetics.setdefault("e_to_t2",
-                                                                        Linear(model.parameters["k_t2"]))\
+                                                                        Linear({"k":model.parameters["k_t2"]}))\
                                                                             (y[model.state_variables.index("e")]/model.shape.volume)*model.shape.volume
 
                                                                          
@@ -386,6 +414,82 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
         v[model.state_variables.index(dim)] = model.shape.calculate_differentials(dvdt)[dim]
     
     return v
+
+if __name__ == "__main__":
+    s=Sphere({"r":5,"t":0.5})
+    cell=Cell("Toy Model",
+              toy_model_stoichiometry,
+              toy_model_ode,
+              {"ka1":1,
+               "kb1":1,
+               "kab1":1,
+               "vm1":1,
+               "ka2":1,
+               "kb2":1,
+               "kab2":1,
+               "vm2":1,
+               "ka3":1,
+               "kb3":1,
+               "kab3":1,
+               "vm3":1,
+               "ka4":1,
+               "kb4":1,
+               "kab4":1,
+               "vm4":1,
+               "ka5":1,
+               "kb5":1,
+               "kab5":1,
+               "vm5":1,
+               "ka6":1,
+               "kb6":1,
+               "kab6":1,
+               "vm6":1,
+               "ka7":1,
+               "kb7":1,
+               "kab7":1,
+               "vm7":1,
+               "ka8":1,
+               "kb8":1,
+               "kab8":1,
+               "vm8":1,
+               "ka9":1,
+               "kb9":1,
+               "kab9":1,
+               "vm9":1,
+               "ka10":1,
+               "kb10":1,
+               "kab10":1,
+               "vm10":1,
+               "k_t1":1,
+               "k_e1":1,
+               "k_e2":1,
+               "k_e3":1,
+               "k_e4":1,
+               "k_e5":1,
+               "k_e6":1,
+               "k_e7":1,
+               "k_e8":1,
+               "k_t2":1,
+               "p21":1,
+               "p22":1,
+               "p31":1,
+               "p32":1,
+               "r41":1,
+               "p42":1,
+               "p51":1,
+               "r61":1,
+               "p62":1,
+               "r71":1,
+               "p72":1,
+               "r81":1,
+               "p82":1,
+               "lipid_density":1},
+              TOY_REACTIONS,
+              TOY_SPECIES,
+              s)
+    c0=np.ones(len(cell.state_variables))/100
+    c0[cell.state_variables.index("S")]=100
+    integrate.solve_ivp(toy_model_ode,(0,10),c0,args=(cell,),method="RK45",t_eval=np.linspace(0,10,100))
 
         
     
