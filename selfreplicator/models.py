@@ -146,6 +146,7 @@ class Cell:
         state_variables = self.compounds.copy()
         shape_variables = [key for key in self.shape.dimensions.keys()]
         state_variables.extend(shape_variables)
+        state_variables.append("Volume")
         return state_variables
 class Environment:
     pass
@@ -244,50 +245,40 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     s[list(map(model.state_variables.index,["I1",
     "P",
     "E"])),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
-    s[list(map(model.state_variables.index,["S",
-    "E",
+    s[list(map(model.state_variables.index,["S","E",
     "NTP"])),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
-    s[list(map(model.state_variables.index,["NTP",
-    "NA"])),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
+    s[list(map(model.state_variables.index,["NTP","NA"])),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
     s[list(map(model.state_variables.index,["I1",
     "E",
     "Li"])),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
-    s[list(map(model.state_variables.index,["I1",
-    "E",
-    "AA"])),model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
-    s[list(map(model.state_variables.index,["AA",
-    "E",
-    "e"])),model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
+    s[list(map(model.state_variables.index,["I1","E","AA"])),
+      model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
+    
+    s[list(map(model.state_variables.index,["AA","E","e"])),
+      model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
+    
     s[[model.state_variables.index("P")],model.reactions.index("P_export")] = -1
-    s[list(map(model.state_variables.index,["AA",
-    "Li",
-    "W"])),model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r102"],1]
-    s[list(map(model.state_variables.index,["e",
-    "t1"])),model.reactions.index("e_to_t1")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e1"])),model.reactions.index("e_to_e1")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e2"])),model.reactions.index("e_to_e2")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e3"])),model.reactions.index("e_to_e3")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e4"])),model.reactions.index("e_to_e4")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e5"])),model.reactions.index("e_to_e5")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e6"])),model.reactions.index("e_to_e6")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e7"])),model.reactions.index("e_to_e7")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "e8"])),model.reactions.index("e_to_e8")] = [-1,1]
-    s[list(map(model.state_variables.index,["e",
-    "t2"])),model.reactions.index("e_to_t2")] = [-1,1]
+    
+    s[list(map(model.state_variables.index,["AA","Li","W"])),
+      model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r102"],1]
+    
+    s[list(map(model.state_variables.index,["e","t1"])),model.reactions.index("e_to_t1")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e1"])),model.reactions.index("e_to_e1")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e2"])),model.reactions.index("e_to_e2")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e3"])),model.reactions.index("e_to_e3")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e4"])),model.reactions.index("e_to_e4")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e5"])),model.reactions.index("e_to_e5")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e6"])),model.reactions.index("e_to_e6")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e7"])),model.reactions.index("e_to_e7")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","e8"])),model.reactions.index("e_to_e8")] = [-1,1]
+    s[list(map(model.state_variables.index,["e","t2"])),model.reactions.index("e_to_t2")] = [-1,1]
     return s
 
     
 def toy_model_ode(t, y, model:Cell)->np.ndarray:
     ### First we update the dimensions of the cell
     model.shape.set_dimensions({key:y[model.state_variables.index(key)] for key in model.shape.dimensions.keys()})
+    y[model.state_variables.index("Volume")]=model.shape.volume
     ### Now we calculate the fluxes for each reaction
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = model.kinetics.setdefault("S_import",
@@ -320,7 +311,7 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
                                                                                      "kab": model.parameters["kab4"], 
                                                                                      "vm":  model.parameters["vm4"]}))\
                                                                                 (y[model.state_variables.index("S")]/model.shape.volume,
-                                                                                y[model.state_variables.index("e4")]/model.shape.volume)*model.shape.volume
+                                                                                y[model.state_variables.index("e4")]/model.shape.volume)*model.shape.volume*y[model.state_variables.index("E")]
     
     fluxes[model.reactions.index("NTP_to_NA")] = model.kinetics.setdefault("NTP_to_NA",
                                                                             PingPong({"ka":  model.parameters["ka5"],
@@ -336,7 +327,7 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
                                                                                       "kab": model.parameters["kab6"],
                                                                                       "vm":  model.parameters["vm6"]}))\
                                                                                 (y[model.state_variables.index("I1")]/model.shape.volume,
-                                                                                 y[model.state_variables.index("e6")]/model.shape.volume)*model.shape.volume
+                                                                                 y[model.state_variables.index("e6")]/model.shape.volume)*model.shape.volume*y[model.state_variables.index("E")]
     
     fluxes[model.reactions.index("I1_to_AA")] = model.kinetics.setdefault("I1_to_AA",
                                                                             PingPong({  "ka": model.parameters["ka7"],
@@ -344,7 +335,7 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
                                                                                         "kab":model.parameters["kab7"],
                                                                                         "vm": model.parameters["vm7"]}))\
                                                                                 (y[model.state_variables.index("I1")]/model.shape.volume,
-                                                                                 y[model.state_variables.index("e7")]/model.shape.volume)*model.shape.volume
+                                                                                 y[model.state_variables.index("e7")]/model.shape.volume)*model.shape.volume*y[model.state_variables.index("E")]
     
     fluxes[model.reactions.index("AA_to_e")] = model.kinetics.setdefault("AA_to_e",
                                                                         PingPong({"ka":   model.parameters["ka8"],
@@ -352,7 +343,7 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
                                                                                   "kab":  model.parameters["kab8"],
                                                                                   "vm":   model.parameters["vm8"]}))\
                                                                             (y[model.state_variables.index("AA")]/model.shape.volume,
-                                                                             y[model.state_variables.index("e8")]/model.shape.volume)*model.shape.volume
+                                                                             y[model.state_variables.index("e8")]/model.shape.volume)*model.shape.volume*y[model.state_variables.index("E")]
                                                                             
     fluxes[model.reactions.index("P_export")] = model.kinetics.setdefault("P_export",
                                                                         PingPong({
@@ -419,14 +410,14 @@ def toy_model_ode(t, y, model:Cell)->np.ndarray:
     return v
 
 if __name__ == "__main__":
-    s=Sphere({"r":5,"t":0.5})
+    s=Sphere({"r":0.1,"t":0.5})
     cell=Cell("Toy Model",
               toy_model_stoichiometry,
               toy_model_ode,
-              {"ka1":1,
-               "kb1":1,
+              {"ka1":100,
+               "kb1":10,
                "kab1":1,
-               "vm1":1,
+               "vm1":100,
                "ka2":1,
                "kb2":1,
                "kab2":1,
@@ -446,7 +437,7 @@ if __name__ == "__main__":
                "ka6":1,
                "kb6":1,
                "kab6":1,
-               "vm6":1,
+               "vm6":0.001,
                "ka7":1,
                "kb7":1,
                "kab7":1,
@@ -463,7 +454,7 @@ if __name__ == "__main__":
                "kb10":1,
                "kab10":1,
                "vm10":1,
-               "k_t1":1,
+               "k_t1":10,
                "k_e1":1,
                "k_e2":1,
                "k_e3":1,
@@ -488,14 +479,18 @@ if __name__ == "__main__":
                "p82":1,
                "r101":-1,
                 "r102":-1,
-               "lipid_density":1},
+               "lipid_density":0.001},
               TOY_REACTIONS,
               TOY_SPECIES,
               s)
     c0=np.ones(len(cell.state_variables))/100
-    c0[cell.state_variables.index("S")]=100
-    sol=integrate.solve_ivp(toy_model_ode,(0,10),c0,args=(cell,),method="RK45",t_eval=np.linspace(0,10,100))
-    px.line(pd.DataFrame(sol.y,index=cell.state_variables,columns=sol.t).T).show()
+    c0[cell.state_variables.index("S_env")]=10
+    c0[cell.state_variables.index("r")]=s.r
+    c0[cell.state_variables.index("Volume")]=s.volume
+    sol=integrate.solve_ivp(toy_model_ode,(0,1000),c0,args=(cell,),method="RK23",t_eval=np.linspace(0,1000,1000))
+    sol_df=pd.DataFrame(sol.y,index=cell.state_variables,columns=sol.t)
+    sol_df=sol_df/sol_df.loc["Volume"]
+    px.line(sol_df.T).show()
 
         
     
