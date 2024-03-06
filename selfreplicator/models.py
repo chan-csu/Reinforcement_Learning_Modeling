@@ -1,6 +1,8 @@
 """This module contains a variety of kinetic models to be used"""
 import numpy as np
 import scipy.integrate as integrate
+import plotly.express as px
+import pandas as pd
 
 TOY_REACTIONS = [
     "S_import",
@@ -46,6 +48,7 @@ TOY_SPECIES = [
     "e7",
     "e8",
     "E",
+    "W"
 ]
     
 class Shape:
@@ -235,50 +238,50 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     """
     s=np.zeros((len(model.state_variables),len(model.reactions)))
     s[[model.state_variables.index("S_env"),model.state_variables.index("S")],model.reactions.index("S_import")] = [-1,1]
-    s[map(model.state_variables.index,["S",
-    "I1",
-    "E"]),model.reactions.index("S_to_I1")] = [-1,model.parameters["p21"],model.parameters["p22"]]
-    s[map(model.state_variables.index,["I1",
+    s[list(map(model.state_variables.index,["S",
+    "I1", "E"])),model.reactions.index("S_to_I1")] = [-1,model.parameters["p21"],model.parameters["p22"]]
+    
+    s[list(map(model.state_variables.index,["I1",
     "P",
-    "E"]),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
-    s[map(model.state_variables.index,["S",
+    "E"])),model.reactions.index("I1_to_P")] = [-1,model.parameters["p31"],model.parameters["p32"]]
+    s[list(map(model.state_variables.index,["S",
     "E",
-    "NTP"]),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
-    s[map(model.state_variables.index,["NTP",
-    "NA"]),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
-    s[map(model.state_variables.index,["I1",
+    "NTP"])),model.reactions.index("S_to_NTP")] = [-1,model.parameters["r41"],model.parameters["p42"]]
+    s[list(map(model.state_variables.index,["NTP",
+    "NA"])),model.reactions.index("NTP_to_NA")] = [-1,model.parameters["p51"]]
+    s[list(map(model.state_variables.index,["I1",
     "E",
-    "Li"]),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
-    s[map(model.state_variables.index,["I1",
+    "Li"])),model.reactions.index("I1_to_Li")] = [-1,model.parameters["r61"],model.parameters["p62"]]
+    s[list(map(model.state_variables.index,["I1",
     "E",
-    "AA"]),model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
-    s[map(model.state_variables.index,["AA",
+    "AA"])),model.reactions.index("I1_to_AA")] = [-1,model.parameters["r71"],model.parameters["p72"]]
+    s[list(map(model.state_variables.index,["AA",
     "E",
-    "e"]),model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
+    "e"])),model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
     s[[model.state_variables.index("P")],model.reactions.index("P_export")] = -1
-    s[map(model.state_variables.index,["AA",
+    s[list(map(model.state_variables.index,["AA",
     "Li",
-    "W"]),model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r101"],1]
-    s[map(model.state_variables.index,["e",
-    "t1"]),model.reactions.index("e_to_t1")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e1"]),model.reactions.index("e_to_e1")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e2"]),model.reactions.index("e_to_e2")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e3"]),model.reactions.index("e_to_e3")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e4"]),model.reactions.index("e_to_e4")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e5"]),model.reactions.index("e_to_e5")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e6"]),model.reactions.index("e_to_e6")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e7"]),model.reactions.index("e_to_e7")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "e8"]),model.reactions.index("e_to_e8")] = [-1,1]
-    s[map(model.state_variables.index,["e",
-    "t2"]),model.reactions.index("e_to_t2")] = [-1,1]
+    "W"])),model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r102"],1]
+    s[list(map(model.state_variables.index,["e",
+    "t1"])),model.reactions.index("e_to_t1")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e1"])),model.reactions.index("e_to_e1")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e2"])),model.reactions.index("e_to_e2")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e3"])),model.reactions.index("e_to_e3")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e4"])),model.reactions.index("e_to_e4")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e5"])),model.reactions.index("e_to_e5")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e6"])),model.reactions.index("e_to_e6")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e7"])),model.reactions.index("e_to_e7")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "e8"])),model.reactions.index("e_to_e8")] = [-1,1]
+    s[list(map(model.state_variables.index,["e",
+    "t2"])),model.reactions.index("e_to_t2")] = [-1,1]
     return s
 
     
@@ -474,22 +477,25 @@ if __name__ == "__main__":
                "p22":1,
                "p31":1,
                "p32":1,
-               "r41":1,
+               "r41":-1,
                "p42":1,
                "p51":1,
-               "r61":1,
+               "r61":-1,
                "p62":1,
-               "r71":1,
+               "r71":-1,
                "p72":1,
-               "r81":1,
+               "r81":-1,
                "p82":1,
+               "r101":-1,
+                "r102":-1,
                "lipid_density":1},
               TOY_REACTIONS,
               TOY_SPECIES,
               s)
     c0=np.ones(len(cell.state_variables))/100
     c0[cell.state_variables.index("S")]=100
-    integrate.solve_ivp(toy_model_ode,(0,10),c0,args=(cell,),method="RK45",t_eval=np.linspace(0,10,100))
+    sol=integrate.solve_ivp(toy_model_ode,(0,10),c0,args=(cell,),method="RK45",t_eval=np.linspace(0,10,100))
+    px.line(pd.DataFrame(sol.y,index=cell.state_variables,columns=sol.t).T).show()
 
         
     
