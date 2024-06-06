@@ -3,6 +3,28 @@ import numpy as np
 import scipy.integrate as integrate
 import plotly.express as px
 import pandas as pd
+import numba
+import torch
+from typing import Iterable
+
+class Network(torch.nn.Module):
+    def __init__(self, input_dim:int, output_dim:int, hidden_layers:tuple[int], activation:torch.nn.Module):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_layers = hidden_layers
+        self.activation = activation
+        self.layers = torch.nn.ModuleList()
+        self.layers.append(torch.nn.Linear(self.input_dim,self.hidden_layers[0]))
+        for i in range(1,len(self.hidden_layers)):
+            self.layers.append(torch.nn.Linear(self.hidden_layers[i-1],self.hidden_layers[i]))
+        self.layers.append(torch.nn.Linear(self.hidden_layers[-1],self.output_dim))
+        
+    def forward(self,x:torch.FloatTensor)->torch.FloatTensor:
+        for layer in self.layers[:-1]:
+            x = self.activation(layer(x))
+        return self.layers[-1](x)
+        
 
 TOY_REACTIONS = [
     "S_import",
@@ -142,7 +164,8 @@ class Cell:
                  reactions:list,
                  compounds:list,
                  shape:Shape,
-                 split_volume:float=0.1):
+                 controlled_params:list
+                 ):
         self.name = name
         self.stoichiometry = stoichiometry
         self.ode_sys = ode_sys
@@ -150,12 +173,17 @@ class Cell:
         self.shape=shape
         self.reactions = reactions
         self.compounds = compounds
+        if set(controlled_params).issubset(set(self.parameters.keys())):
+            self.controlled_params=controlled_params
+        else:
+            raise Exception("The controlled parameters should be a subset of parameters")
         self.state_variables = self.get_state_variables()
         self.kinetics={}
         self.number=1
-        self.split_volume=split_volume
         self.cell_metabolites=[i for i in self.compounds if not i.endswith("_env")]
         self.env_metabolites=[self.state_variables.index(i) for i in self.compounds if i.endswith("_env")]
+        self._set_policy()
+        self._set_value()
         
     
     def get_state_variables(self)->list:
@@ -171,14 +199,37 @@ class Cell:
     
     
     def can_double(self,state:np.ndarray,time:float)->bool:
-        if state[self.state_variables.index("Volume")]>=self.split_volume:
+        if state[self.state_variables.index("Volume")]>=self.parameters["split_volume"]:
             return True
         else:
             return False
     
-class Environment:
-    pass
+    def update_parameters(self,new_params:dict)->None:
+        self.parameters.update(new_params)
     
+    def decide(self,observables:torch.FloatTensor)->torch.FloatTensor:
+        pass
+    
+    def _decision_to_params(self,decision:torch.FloatTensor)->dict:
+        return dict(zip(self.controlled_params,decision))
+    
+    def _set_policy(self)->None:
+        self.policy = Network(len(self.state_variables)+1,len(self.controlled_params),(10,10),torch.nn.ReLU())
+    
+    def _set_value(self)->None:
+        self.value = Network(len(self.state_variables)+1,1,(10,10),torch.nn.ReLU())
+        
+    
+    
+class Environment:
+    def __init__(self, 
+                 name:str, 
+                 cells:Iterable[Cell],
+                ):
+        self.name = name
+        self.cells = cells
+        self.state_variables = self.get_state_variables()
+                
         
 
 class Kinetic:
@@ -234,7 +285,6 @@ class Linear(Kinetic):
 
     def __call__(self,x:float)->float:
         return self.k*x
-
 
 def toy_model_stoichiometry(model:Cell)->np.ndarray:
     """This function returns the stoichiometry of the toy model. Here is a look at the governing rules:
@@ -301,7 +351,6 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     s[list(map(model.state_variables.index,["e","t2"])),model.reactions.index("e_to_t2")] = [-1,1]
     return s
 
-    
 def toy_model_ode(t, y, model:Cell)->np.ndarray:
     ### First we update the dimensions of the cell
     y[y<0]=0
@@ -532,12 +581,15 @@ if __name__ == "__main__":
                "r81":-1,
                "p82":1,
                "r101":-1,
-                "r102":-1,
-               "lipid_density":0.05},
+               "r102":-1,
+               "lipid_density":0.05,
+               "split_volume":0.04,
+               },
               TOY_REACTIONS,
               TOY_SPECIES,
               s,
-              split_volume=0.006)
+              controlled_params=[]
+              )
     c0=np.ones(len(cell.state_variables))/100
     c0[cell.state_variables.index("S_env")]=10
     c0[cell.state_variables.index("r")]=s.r
