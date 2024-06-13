@@ -134,12 +134,7 @@ class Sphere(Shape):
     
     def set_dim_from_volume(self,v:float)->None:
         self.r = (3*v/(4*np.pi))**(1/3)
-        
-    
 
-    
-
-    
     def calculate_differentials(self,dv:float)->dict[str,float]:
         """V=4*pi*[3rt^3+3t^2r+t^3] this equation should be used:
         dV=4*pi*[6rt+3t^2]*dr
@@ -164,6 +159,7 @@ class Cell:
                  reactions:list,
                  compounds:list,
                  shape:Shape,
+                 observable_states:list,
                  controlled_params:list
                  ):
         self.name = name
@@ -177,6 +173,8 @@ class Cell:
             self.controlled_params=controlled_params
         else:
             raise Exception("The controlled parameters should be a subset of parameters")
+        self.observable_states = observable_states
+        
         self.state_variables = self.get_state_variables()
         self.kinetics={}
         self.number=1
@@ -186,7 +184,7 @@ class Cell:
         self._set_value()
         
     
-    def get_state_variables(self)->list:
+    def get_state_variables(self,include_time:bool=True)->list:
         """
         This method returns the state variables of the cell. The state variables are the compounds and the shape variables\
         
@@ -195,6 +193,8 @@ class Cell:
         shape_variables = [key for key in self.shape.dimensions.keys()]
         state_variables.extend(shape_variables)
         state_variables.append("Volume")
+        if include_time:
+            state_variables.append("time")
         return state_variables
     
     
@@ -208,16 +208,19 @@ class Cell:
         self.parameters.update(new_params)
     
     def decide(self,observables:torch.FloatTensor)->torch.FloatTensor:
-        pass
+        return self.policy(observables)
+    
+    def evaluate(self,observables:torch.FloatTensor)->torch.FloatTensor:
+        return self.value(observables)
     
     def _decision_to_params(self,decision:torch.FloatTensor)->dict:
         return dict(zip(self.controlled_params,decision))
     
     def _set_policy(self)->None:
-        self.policy = Network(len(self.state_variables)+1,len(self.controlled_params),(10,10),torch.nn.ReLU())
+        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10),torch.nn.ReLU())
     
     def _set_value(self)->None:
-        self.value = Network(len(self.state_variables)+1,1,(10,10),torch.nn.ReLU())
+        self.value = Network(len(self.observable_states),1,(10,10),torch.nn.ReLU())
         
     
     
@@ -225,10 +228,15 @@ class Environment:
     def __init__(self, 
                  name:str, 
                  cells:Iterable[Cell],
+                 initial_conditions:dict[str,float],
+                 controllers:dict[str,callable],
                 ):
         self.name = name
         self.cells = cells
         self.state_variables = self.get_state_variables()
+    
+    def get_state_variables(self)->list:
+        pass
                 
         
 
@@ -588,7 +596,12 @@ if __name__ == "__main__":
               TOY_REACTIONS,
               TOY_SPECIES,
               s,
-              controlled_params=[]
+              controlled_params=["k_e1",
+                                 "k_e2",
+                                 "k_e3",
+                                 "k_e4",
+                                 ],
+              observable_states=["S","time"]
               )
     c0=np.ones(len(cell.state_variables))/100
     c0[cell.state_variables.index("S_env")]=10
