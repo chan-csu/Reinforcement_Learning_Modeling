@@ -198,7 +198,7 @@ class Cell:
         return state_variables
     
     
-    def can_double(self,state:np.ndarray,time:float)->bool:
+    def can_double(self,state:np.ndarray)->bool:
         if state[self.state_variables.index("Volume")]>=self.parameters["split_volume"]:
             return True
         else:
@@ -230,13 +230,39 @@ class Environment:
                  cells:Iterable[Cell],
                  initial_conditions:dict[str,float],
                  controllers:dict[str,callable],
+                 time_step:float=0.1
                 ):
         self.name = name
         self.cells = cells
-        self.state_variables = self.get_state_variables()
+        self.environment_vars=self.resolve_env_vars()
+        self.initial_conditions = initial_conditions
+        for compound in set(self.environment_vars).difference(set(initial_conditions.keys())):
+            self.initial_conditions[compound]=0
+        self.state=self.get_state_from_initial_conditions()
+        self.controllers=controllers
+        self.time_step=time_step
     
-    def get_state_variables(self)->list:
-        pass
+    def resolve_env_vars(self)->list:
+        env_vars=[]
+        for cell in self.cells:
+            env_vars.extend([i for i in cell.compounds if i.endswith("_env")])
+        env_vars=[i.name for i in self.cells]+sorted(list(set(env_vars)))+["time"]
+        return env_vars
+    
+    def get_state_from_initial_conditions(self)->np.ndarray:
+        state=np.zeros(len(self.environment_vars))
+        for key,value in self.initial_conditions.items():
+            state[self.environment_vars.index(key)]=value
+        return state
+        
+    ### UNDER CONSTRUCTION ###
+    def step(self)->None:
+        self.pass_env_states()
+        for cell in self.cells:
+            dydt=cell.ode_sys(self.state[-1],cell.state,cell)
+            cell.state+=dydt*self.time_step
+            for i in cell.env_metabolites:
+                cell.state[i]=self.state[self.environment_vars.index(cell.compounds[i])]
                 
         
 
@@ -359,13 +385,13 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     s[list(map(model.state_variables.index,["e","t2"])),model.reactions.index("e_to_t2")] = [-1,1]
     return s
 
-def toy_model_ode(t, y, model:Cell)->np.ndarray:
+def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     ### First we update the dimensions of the cell
     y[y<0]=0
     model.shape.set_dimensions({key:y[model.state_variables.index(key)] for key in model.shape.dimensions.keys()})
     y[model.state_variables.index("Volume")]=model.shape.volume
     
-    if model.can_double(y,t):
+    if model.can_double(y):
         model.shape.set_dim_from_volume(model.shape.volume/2)
         for dim,val in model.shape.get_dimensions().items():
             y[model.state_variables.index(dim)] = val
@@ -601,8 +627,12 @@ if __name__ == "__main__":
                                  "k_e3",
                                  "k_e4",
                                  ],
-              observable_states=["S","time"]
+              observable_states=["S_env","time"]
               )
+    env=Environment("Toy Model Environment",
+                    [cell],
+                    {"S_env":10},
+                    controllers={})
     c0=np.ones(len(cell.state_variables))/100
     c0[cell.state_variables.index("S_env")]=10
     c0[cell.state_variables.index("r")]=s.r
