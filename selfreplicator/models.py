@@ -228,13 +228,16 @@ class Environment:
     def __init__(self, 
                  name:str, 
                  cells:Iterable[Cell],
+                 extra_states:Iterable[str],
                  initial_conditions:dict[str,float],
                  controllers:dict[str,callable],
                  time_step:float=0.1
                 ):
         self.name = name
         self.cells = cells
-        self.environment_vars=self.resolve_env_vars()
+        for cell in self.cells:
+            cell.environment=self
+        self.environment_vars=self.resolve_env_vars(extra_state=extra_states)
         self.initial_conditions = initial_conditions
         for compound in set(self.environment_vars).difference(set(initial_conditions.keys())):
             self.initial_conditions[compound]=0
@@ -242,11 +245,17 @@ class Environment:
         self.controllers=controllers
         self.time_step=time_step
     
-    def resolve_env_vars(self)->list:
+    def resolve_env_vars(self,extra_state:Iterable[str])->list:
         env_vars=[]
+        env_vars_mapping={}
         for cell in self.cells:
-            env_vars.extend([i for i in cell.compounds if i.endswith("_env")])
-        env_vars=[i.name for i in self.cells]+sorted(list(set(env_vars)))+["time"]
+            env_vars_mapping[cell.name]={}
+            env_comps=[i for i in enumerate(cell.compounds) if i[1].endswith("_env")]
+            for ind,comp in env_comps:
+                env_vars_mapping[cell.name][comp]=ind
+            env_vars.extend([i[1] for i in env_comps])
+        env_vars=[i.name for i in self.cells]+sorted(list(set(env_vars)))+extra_state+["time"]
+        self.env_vars_mapping=env_vars_mapping
         return env_vars
     
     def get_state_from_initial_conditions(self)->np.ndarray:
@@ -255,14 +264,28 @@ class Environment:
             state[self.environment_vars.index(key)]=value
         return state
         
+    def pass_env_states(self)->None:
+        for cell in self.cells:
+            for key,value in self.env_vars_mapping[cell.name].items():
+                cell.state[value]=self.state[self.environment_vars.index(key)]
+        return
     ### UNDER CONSTRUCTION ###
     def step(self)->None:
+        ### to update the information of the agents about the environment
         self.pass_env_states()
+        ddt_collections={}
         for cell in self.cells:
             dydt=cell.ode_sys(self.state[-1],cell.state,cell)
             cell.state+=dydt*self.time_step
-            for i in cell.env_metabolites:
-                cell.state[i]=self.state[self.environment_vars.index(cell.compounds[i])]
+            for comp,ind in self.env_vars_mapping[cell.name].items():
+                ddt_collections[comp]=ddt_collections.get(comp,0)+dydt[ind]
+        
+        for key in ddt_collections:
+            self.state[self.environment_vars.index(key)]=ddt_collections[key]
+        
+        self.pass_env_states()
+
+        return 
                 
         
 
@@ -403,6 +426,8 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
                 
         
     ### Now we calculate the fluxes for each reaction
+    actions=model.decide(torch.FloatTensor(y))
+    model.parameters.update(dict(zip(model.controlled_params,actions)))
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = model.kinetics.setdefault("S_import",
                                                                           PingPong({"ka": model.parameters["ka1"],
@@ -629,9 +654,10 @@ if __name__ == "__main__":
                                  ],
               observable_states=["S_env","time"]
               )
-    env=Environment("Toy Model Environment",
-                    [cell],
-                    {"S_env":10},
+    env=Environment(name="Toy Model Environment",
+                    cells=[cell],
+                    initial_conditions={"S_env":10},
+                    extra_states=[],
                     controllers={})
     c0=np.ones(len(cell.state_variables))/100
     c0[cell.state_variables.index("S_env")]=10
