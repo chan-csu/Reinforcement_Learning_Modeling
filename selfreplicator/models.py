@@ -269,23 +269,34 @@ class Environment:
             for key,value in self.env_vars_mapping[cell.name].items():
                 cell.state[value]=self.state[self.environment_vars.index(key)]
         return
-    ### UNDER CONSTRUCTION ###
-    def step(self)->None:
+    def reset(self)->None:
+        self.state=self.get_state_from_initial_conditions()
+        for cell in self.cells:
+            cell.reset()
+        self.pass_env_states()
+        return
+    def step(self)->dict[str,np.ndarray]:
         ### to update the information of the agents about the environment
         self.pass_env_states()
+        previous_states={cell.name:cell.state for cell in self.cells}.update({"env_states":self.state})
+        rewards={}
+        actions={}
         ddt_collections={}
         for cell in self.cells:
             dydt=cell.ode_sys(self.state[-1],cell.state,cell)
             cell.state+=dydt*self.time_step
+            rewards[cell.name]=cell.reward
+            actions[cell.name]=cell.actions
             for comp,ind in self.env_vars_mapping[cell.name].items():
                 ddt_collections[comp]=ddt_collections.get(comp,0)+dydt[ind]
         
         for key in ddt_collections:
             self.state[self.environment_vars.index(key)]=ddt_collections[key]
+        self.state[-1]+=self.time_step
         
         self.pass_env_states()
 
-        return 
+        return ({cell.name:cell.state for cell in self.cells}.update({"env_states":self.state}),rewards,actions,previous_states)
                 
         
 
