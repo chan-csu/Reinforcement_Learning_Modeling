@@ -5,6 +5,7 @@ import plotly.express as px
 import pandas as pd
 import numba
 import torch
+from torch.distributions import Normal
 from typing import Iterable
 
 class Network(torch.nn.Module):
@@ -144,11 +145,6 @@ class Sphere(Shape):
         diffs.update({"r":dv/(4*np.pi*(6*self.r*self.t + 3*self.t**2))})
         return diffs
     
-
-
-
-
-
 class Cell:
     """Objects of this class represent the biological function of a Cell"""
     def __init__(self,
@@ -160,7 +156,8 @@ class Cell:
                  compounds:list,
                  shape:Shape,
                  observable_states:list,
-                 controlled_params:list
+                 controlled_params:list,
+                 initial_conditions:dict[str,float]
                  ):
         self.name = name
         self.stoichiometry = stoichiometry
@@ -182,6 +179,9 @@ class Cell:
         self.env_metabolites=[self.state_variables.index(i) for i in self.compounds if i.endswith("_env")]
         self._set_policy()
         self._set_value()
+        self.initial_state=np.zeros(len(self.state_variables))
+        for key,value in initial_conditions.items():
+            self.initial_state[self.state_variables.index(key)]=value
         
     
     def get_state_variables(self,include_time:bool=True)->list:
@@ -208,7 +208,8 @@ class Cell:
         self.parameters.update(new_params)
     
     def decide(self,observables:torch.FloatTensor)->torch.FloatTensor:
-        return self.policy(observables)
+        self.actions=self.policy(observables)
+        return self.actions
     
     def evaluate(self,observables:torch.FloatTensor)->torch.FloatTensor:
         return self.value(observables)
@@ -221,6 +222,22 @@ class Cell:
     
     def _set_value(self)->None:
         self.value = Network(len(self.observable_states),1,(10,10),torch.nn.ReLU())
+    
+    def reset(self)->None:
+        self.state=self.initial_state
+        return
+    
+    @property
+    def state(self)->np.ndarray:
+        return self._state
+    
+    @state.setter
+    def state(self,state:np.ndarray)->None:
+        self._state=state
+    
+    @property
+    def reward(self)->float:
+        return self.number
         
     
     
@@ -265,6 +282,7 @@ class Environment:
         return state
         
     def pass_env_states(self)->None:
+        """A critical method to communicate environment states to the cells. This method updates the states of the cells with the environment states."""
         for cell in self.cells:
             for key,value in self.env_vars_mapping[cell.name].items():
                 cell.state[value]=self.state[self.environment_vars.index(key)]
