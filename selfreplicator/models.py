@@ -55,6 +55,7 @@ TOY_SPECIES = [
     "S",
     "I1",
     "P",
+    "P_env"
     "NTP",
     "NA",
     "Li",
@@ -155,7 +156,7 @@ class Cell:
                  reactions:list,
                  compounds:list,
                  shape:Shape,
-                 observable_states:list,
+                 observable_env_states:list[str],
                  controlled_params:list,
                  initial_conditions:dict[str,float]
                  ):
@@ -170,20 +171,20 @@ class Cell:
             self.controlled_params=controlled_params
         else:
             raise Exception("The controlled parameters should be a subset of parameters")
-        self.observable_states = observable_states
-        
+          
         self.state_variables = self.get_state_variables()
         self.kinetics={}
-        self.number=1
-        self.cell_metabolites=[i for i in self.compounds if not i.endswith("_env")]
-        self.env_metabolites=[self.state_variables.index(i) for i in self.compounds if i.endswith("_env")]
-        self._set_policy()
-        self._set_value()
         self.initial_state=np.zeros(len(self.state_variables))
         for key,value in initial_conditions.items():
             self.initial_state[self.state_variables.index(key)]=value
+        self.number=initial_conditions.get("number",1)
+        self.observable_states = [ind for ind,i in enumerate(self.state_variables) if not i.endswith("_env") or i in observable_env_states]
+        self._set_policy()
+        self._set_value()
+        self._initial_state=np.ndarray([initial_conditions.get(i,0) for i in self.state_variables])
         
-    
+        
+        
     def get_state_variables(self,include_time:bool=True)->list:
         """
         This method returns the state variables of the cell. The state variables are the compounds and the shape variables\
@@ -193,8 +194,9 @@ class Cell:
         shape_variables = [key for key in self.shape.dimensions.keys()]
         state_variables.extend(shape_variables)
         state_variables.append("Volume")
+        state_variables.append("number")
         if include_time:
-            state_variables.append("time")
+            state_variables.append("time_env")
         return state_variables
     
     
@@ -420,7 +422,7 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     s[list(map(model.state_variables.index,["AA","E","e"])),
       model.reactions.index("AA_to_e")] = [-1,model.parameters["r81"],model.parameters["p82"]]
     
-    s[[model.state_variables.index("P")],model.reactions.index("P_export")] = -1
+    s[[model.state_variables.index("P"),model.state_variables.index("P_env")],model.reactions.index("P_export")] = [-1,1]
     
     s[list(map(model.state_variables.index,["AA","Li","W"])),
       model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r102"],1]
@@ -681,7 +683,8 @@ if __name__ == "__main__":
                                  "k_e3",
                                  "k_e4",
                                  ],
-              observable_states=["S_env","time"]
+              observable_states=["S_env","time"],
+              
               )
     env=Environment(name="Toy Model Environment",
                     cells=[cell],
@@ -697,10 +700,7 @@ if __name__ == "__main__":
     sol=forward_euler(toy_model_ode,c0,np.linspace(0,600,10000),(cell,))
     sol_df=pd.DataFrame(sol,index=cell.state_variables)
 
-    
-    sol_df.loc[[i for i in sol_df.index if i not in {"Volume","S_env","r","t"}]]=sol_df.loc[[i for i in sol_df.index if i not in {"Volume","S_env"}]]/sol_df.loc["Volume"]
-    print(cell.number)
-    px.line(sol_df.T).show()
+
 
         
     
