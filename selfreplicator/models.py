@@ -174,21 +174,23 @@ class Cell:
           
         self.state_variables = self.get_state_variables()
         self.kinetics={}
-        for key,value in initial_conditions.items():
-            self.initial_state[self.state_variables.index(key)]=value
         self.number=initial_conditions.get("number",1)
         self.observable_states = [ind for ind,i in enumerate(self.state_variables) if not i.endswith("_env") or i in observable_env_states]
         self._set_policy()
         self._set_value()
+        for dim,val in self.shape.get_dimensions().items():
+            initial_conditions[dim]=val
+        initial_conditions["Volume"]=self.shape.volume
+        initial_conditions["number"]=self.number
         self._initial_state=tuple([initial_conditions.get(i,0) for i in self.state_variables])
-        self.env_states=[i for i in self.state_variables if i.endswith("_env")]
+        self.env_metabolites=[ind for ind,i in enumerate(self.state_variables) if i.endswith("_env")]
         self.environment=None
         self.reset()
         
     
     @property
     def initial_state(self)->np.ndarray:
-        return np.array(self._initial_state)
+        return np.array(self._initial_state,dtype=np.float64)
         
     def get_state_variables(self,include_time:bool=True)->list:
         """
@@ -214,8 +216,8 @@ class Cell:
     def update_parameters(self,new_params:dict)->None:
         self.parameters.update(new_params)
     
-    def decide(self,observables:torch.FloatTensor)->torch.FloatTensor:
-        self.actions=self.policy(observables)
+    def decide(self)->torch.FloatTensor:
+        self.actions=self.policy(torch.FloatTensor(self.state.take(self.observable_states)))
         return self.actions
     
     def evaluate(self,observables:torch.FloatTensor)->torch.FloatTensor:
@@ -317,8 +319,8 @@ class Environment:
         
         for key in ddt_collections:
             self.state[self.environment_vars.index(key)]=ddt_collections[key]
-        self.state[-1]+=self.time_step
         
+        self.state[-1]+=self.time_step   
         self.pass_env_states()
 
         return ({cell.name:cell.state.take(cell.observable_states) for cell in self.cells},rewards,actions,previous_states)
@@ -459,10 +461,11 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
             y[model.state_variables.index(i)]=y[model.state_variables.index(i)]/2
         
         model.number*=2
+        model.state[model.state_variables.index("number")]=model.number
                 
         
     ### Now we calculate the fluxes for each reaction
-    actions=model.decide(torch.FloatTensor(y.take(model.observable_states)))
+    actions=model.decide()
     model.parameters.update(dict(zip(model.controlled_params,actions)))
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = model.kinetics.setdefault("S_import",
@@ -689,7 +692,7 @@ if __name__ == "__main__":
                                  "k_e4",
                                  ],
               observable_env_states=["S_env","time_env"],
-              initial_conditions={}
+              initial_conditions={"Volume":0.001}
               
               )
     env=Environment(name="Toy Model Environment",
