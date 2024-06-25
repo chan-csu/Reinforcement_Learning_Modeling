@@ -55,7 +55,7 @@ TOY_SPECIES = [
     "S",
     "I1",
     "P",
-    "P_env"
+    "P_env",
     "NTP",
     "NA",
     "Li",
@@ -174,16 +174,21 @@ class Cell:
           
         self.state_variables = self.get_state_variables()
         self.kinetics={}
-        self.initial_state=np.zeros(len(self.state_variables))
         for key,value in initial_conditions.items():
             self.initial_state[self.state_variables.index(key)]=value
         self.number=initial_conditions.get("number",1)
         self.observable_states = [ind for ind,i in enumerate(self.state_variables) if not i.endswith("_env") or i in observable_env_states]
         self._set_policy()
         self._set_value()
-        self._initial_state=np.ndarray([initial_conditions.get(i,0) for i in self.state_variables])
+        self._initial_state=tuple([initial_conditions.get(i,0) for i in self.state_variables])
+        self.env_states=[i for i in self.state_variables if i.endswith("_env")]
+        self.environment=None
+        self.reset()
         
-        
+    
+    @property
+    def initial_state(self)->np.ndarray:
+        return np.array(self._initial_state)
         
     def get_state_variables(self,include_time:bool=True)->list:
         """
@@ -269,11 +274,11 @@ class Environment:
         env_vars_mapping={}
         for cell in self.cells:
             env_vars_mapping[cell.name]={}
-            env_comps=[i for i in enumerate(cell.compounds) if i[1].endswith("_env")]
+            env_comps=[i for i in enumerate(cell.state_variables) if i[1].endswith("_env")]
             for ind,comp in env_comps:
                 env_vars_mapping[cell.name][comp]=ind
             env_vars.extend([i[1] for i in env_comps])
-        env_vars=[i.name for i in self.cells]+sorted(list(set(env_vars)))+extra_state+["time"]
+        env_vars=[i.name for i in self.cells]+sorted(list(set(env_vars)-set("time_env")))+extra_state+["time_env"] # Makes sure that time_env is the last variable and only appears once
         self.env_vars_mapping=env_vars_mapping
         return env_vars
     
@@ -298,7 +303,7 @@ class Environment:
     def step(self)->dict[str,np.ndarray]:
         ### to update the information of the agents about the environment
         self.pass_env_states()
-        previous_states={cell.name:cell.state for cell in self.cells}.update({"env_states":self.state})
+        previous_states={cell.name:cell.state.take(cell.observable_states) for cell in self.cells}
         rewards={}
         actions={}
         ddt_collections={}
@@ -316,7 +321,7 @@ class Environment:
         
         self.pass_env_states()
 
-        return ({cell.name:cell.state for cell in self.cells}.update({"env_states":self.state}),rewards,actions,previous_states)
+        return ({cell.name:cell.state.take(cell.observable_states) for cell in self.cells},rewards,actions,previous_states)
                 
         
 
@@ -457,7 +462,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
                 
         
     ### Now we calculate the fluxes for each reaction
-    actions=model.decide(torch.FloatTensor(y))
+    actions=model.decide(torch.FloatTensor(y.take(model.observable_states)))
     model.parameters.update(dict(zip(model.controlled_params,actions)))
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = model.kinetics.setdefault("S_import",
@@ -683,7 +688,8 @@ if __name__ == "__main__":
                                  "k_e3",
                                  "k_e4",
                                  ],
-              observable_states=["S_env","time"],
+              observable_env_states=["S_env","time_env"],
+              initial_conditions={}
               
               )
     env=Environment(name="Toy Model Environment",
@@ -691,6 +697,7 @@ if __name__ == "__main__":
                     initial_conditions={"S_env":10},
                     extra_states=[],
                     controllers={})
+    env.step()
     c0=np.ones(len(cell.state_variables))/100
     c0[cell.state_variables.index("S_env")]=10
     c0[cell.state_variables.index("r")]=s.r
