@@ -7,6 +7,7 @@ import numba
 import torch
 from torch.distributions import Normal
 from typing import Iterable
+import ray 
 
 class Network(torch.nn.Module):
     def __init__(self, input_dim:int, output_dim:int, hidden_layers:tuple[int], activation:torch.nn.Module):
@@ -342,7 +343,47 @@ class Environment:
 
         return ({cell.name:cell.state.take(cell.observable_states) for cell in self.cells},rewards,actions,previous_states)
                 
+class Trainer:
+    """This is a class to train the agents in a given environment"""
+    def __init__(self,
+                 env:Environment,
+                 episodes_per_batch:int,
+                 steps_per_episode:int,
+                 save_every:int,
+                 save_path:str,
+                 parallel_framework:str="ray",
+                 ):
+    
+        self.env=env
+        self.episodes_per_batch=episodes_per_batch
+        self.steps_per_episode=steps_per_episode
+        self.save_every=save_every
+        self.save_path=save_path
+        self.parallel_framework=parallel_framework
         
+
+    
+    def run_batch(self)->dict[dict]:
+        if self.parallel_framework=="ray":
+            results=ray.get([run_episode_ray.remote(self.env,self.steps_per_episode) for i in range(self.episodes_per_batch)])
+        elif self.parallel_framework=="native":
+            pass
+    
+    def train(self):
+        pass
+    
+    
+    
+    
+def run_episode(env:Environment,num_steps:int)->list[tuple[dict]]:
+    env.reset()
+    return [env.step() for i in range(num_steps)]   
+
+@ray.remote
+def run_episode_ray(env:Environment,num_steps:int)->list[tuple[dict]]:
+    env.reset()
+    return [env.step() for i in range(num_steps)]
+
 
 class Kinetic:
     """Objects of this class represent a kinetic model"""
@@ -612,9 +653,6 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     
     for i in model.env_metabolites:
         v[i]*=model.number
-    
-
-    
     return v
 
 def forward_euler(ode:callable,initial_conditions:np.ndarray,t:np.ndarray,args:tuple)->np.ndarray:
@@ -721,9 +759,8 @@ if __name__ == "__main__":
                     cells=[cell],
                     initial_conditions={"S_env":10},
                     extra_states=[],
-                    controllers={"S_env":S_controller},)
-    fig=px.line(pd.DataFrame(np.vstack([env.step()[-1]["Toy Model"] for i in range(100)]),columns=cell.state_variables))   
-    fig.show() 
+                    controllers={"S_env":S_controller},time_step=0.01)
+    
 
 
 
