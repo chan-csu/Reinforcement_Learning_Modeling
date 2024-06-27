@@ -229,6 +229,7 @@ class Cell:
     
     def decide(self)->torch.FloatTensor:
         self.actions=self.policy(torch.FloatTensor(self.state.take(self.observable_states)))
+        self.actions=torch.clamp(self.actions,0,1)
         return self.actions
     
     def evaluate(self,observables:torch.FloatTensor)->torch.FloatTensor:
@@ -706,7 +707,7 @@ if __name__ == "__main__":
                                  "k_e3",
                                  "k_e4",
                                  ],
-              observable_env_states=["S_env","time_env"],
+              observable_env_states=["S_env","time_env","P_env"],
               initial_conditions={i:0.1 for i in TOY_SPECIES}
               
               )
@@ -714,14 +715,15 @@ if __name__ == "__main__":
     def S_controller(state:dict[str,float])->float:
         amplitude=10
         period=10
-        return amplitude*np.sin(2*np.pi*state["time_env"]/period)
+        return amplitude*np.abs(np.sin(2*np.pi*state["time_env"]/period))
          
     env=Environment(name="Toy Model Environment",
                     cells=[cell],
                     initial_conditions={"S_env":10},
                     extra_states=[],
                     controllers={"S_env":S_controller},)
-    env.step()
+    fig=px.line(pd.DataFrame(np.vstack([env.step()[-1]["Toy Model"] for i in range(100)]),columns=cell.state_variables))   
+    fig.show() 
 
 
 
