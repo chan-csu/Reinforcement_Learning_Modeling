@@ -171,26 +171,37 @@ class Cell:
             self.controlled_params=controlled_params
         else:
             raise Exception("The controlled parameters should be a subset of parameters")
-          
+        
         self.state_variables = self.get_state_variables()
+        self.number_index=self.state_variables.index("number")
+        self.volume_index=self.state_variables.index("volume")
         self.kinetics={}
-        self.number=initial_conditions.get("number",1)
         self.observable_states = [ind for ind,i in enumerate(self.state_variables) if not i.endswith("_env") or i in observable_env_states]
         self._set_policy()
         self._set_value()
         for dim,val in self.shape.get_dimensions().items():
             initial_conditions[dim]=val
-        initial_conditions["Volume"]=self.shape.volume
-        initial_conditions["number"]=self.number
+        initial_conditions["volume"]=self.shape.volume
+        initial_conditions["number"]=initial_conditions.setdefault("number",1)
         self._initial_state=tuple([initial_conditions.get(i,0) for i in self.state_variables])
         self.env_metabolites=[ind for ind,i in enumerate(self.state_variables) if i.endswith("_env")]
         self.environment=None
         self.reset()
         
+        
+        
     
     @property
     def initial_state(self)->np.ndarray:
         return np.array(self._initial_state,dtype=np.float64)
+    
+    @property
+    def number(self)->float:
+        return self.state[self.number_index]
+    
+    @property
+    def volume(self)->float:
+        return self.state[self.volume_index]
         
     def get_state_variables(self,include_time:bool=True)->list:
         """
@@ -200,7 +211,7 @@ class Cell:
         state_variables = self.compounds.copy()
         shape_variables = [key for key in self.shape.dimensions.keys()]
         state_variables.extend(shape_variables)
-        state_variables.append("Volume")
+        state_variables.append("volume")
         state_variables.append("number")
         if include_time:
             state_variables.append("time_env")
@@ -208,7 +219,7 @@ class Cell:
     
     
     def can_double(self,state:np.ndarray)->bool:
-        if state[self.state_variables.index("Volume")]>=self.parameters["split_volume"]:
+        if self.volume>=self.parameters["split_volume"]:
             return True
         else:
             return False
@@ -265,6 +276,8 @@ class Environment:
             cell.environment=self
         self.environment_vars=self.resolve_env_vars(extra_state=extra_states)
         self.initial_conditions = initial_conditions
+        for c_states,func in controllers.items():
+            self.initial_conditions[c_states]=func(self.get_state_from_initial_conditions())
         for compound in set(self.environment_vars).difference(set(initial_conditions.keys())):
             self.initial_conditions[compound]=0
         self.state=self.get_state_from_initial_conditions()
@@ -295,6 +308,8 @@ class Environment:
         return
     def reset(self)->None:
         self.state=self.get_state_from_initial_conditions()
+        for c_states,func in self.controllers.items():
+            self.initial_conditions[c_states]=func(self.state)
         for cell in self.cells:
             cell.reset()
         self.pass_env_states()
@@ -317,7 +332,11 @@ class Environment:
         for key in ddt_collections:
             self.state[key]+=ddt_collections[key]
         
-        self.state['time_env']+=self.time_step   
+        self.state['time_env']+=self.time_step
+        
+        for c_states,func in self.controllers.items():
+            self.state[c_states]=func(self.state)   
+        
         self.pass_env_states()
 
         return ({cell.name:cell.state.take(cell.observable_states) for cell in self.cells},rewards,actions,previous_states)
@@ -447,7 +466,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     ### First we update the dimensions of the cell
     y[y<0]=0
     model.shape.set_dimensions({key:y[model.state_variables.index(key)] for key in model.shape.dimensions.keys()})
-    y[model.state_variables.index("Volume")]=model.shape.volume
+    y[model.volume_index]=model.shape.volume
     
     if model.can_double(y):
         model.shape.set_dim_from_volume(model.shape.volume/2)
@@ -457,8 +476,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
         for i in model.cell_metabolites:
             y[model.state_variables.index(i)]=y[model.state_variables.index(i)]/2
         
-        model.number*=2
-        model.state[model.state_variables.index("number")]=model.number
+        model.state[model.number_index]=model.state[model.number_index]*2
                 
         
     ### Now we calculate the fluxes for each reaction
@@ -689,23 +707,22 @@ if __name__ == "__main__":
                                  "k_e4",
                                  ],
               observable_env_states=["S_env","time_env"],
-              initial_conditions={"Volume":0.001}
+              initial_conditions={i:0.1 for i in TOY_SPECIES}
               
               )
+    
+    def S_controller(state:dict[str,float])->float:
+        amplitude=10
+        period=10
+        return amplitude*np.sin(2*np.pi*state["time_env"]/period)
+         
     env=Environment(name="Toy Model Environment",
                     cells=[cell],
                     initial_conditions={"S_env":10},
                     extra_states=[],
-                    controllers={})
+                    controllers={"S_env":S_controller},)
     env.step()
-    c0=np.ones(len(cell.state_variables))/100
-    c0[cell.state_variables.index("S_env")]=10
-    c0[cell.state_variables.index("r")]=s.r
-    c0[cell.state_variables.index("Volume")]=s.volume
-    # sol=integrate.solve_ivp(toy_model_ode,(0,1000),c0,args=(cell,),method="RK23",t_eval=np.linspace(0,1000,1000))
-    # sol_df=pd.DataFrame(sol.y,index=cell.state_variables)
-    sol=forward_euler(toy_model_ode,c0,np.linspace(0,600,10000),(cell,))
-    sol_df=pd.DataFrame(sol,index=cell.state_variables)
+
 
 
 
