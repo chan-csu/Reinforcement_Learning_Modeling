@@ -21,11 +21,12 @@ class Network(torch.nn.Module):
         for i in range(1,len(self.hidden_layers)):
             self.layers.append(torch.nn.Linear(self.hidden_layers[i-1],self.hidden_layers[i]))
         self.layers.append(torch.nn.Linear(self.hidden_layers[-1],self.output_dim))
+        self.relu=torch.nn.ReLU()
         
     def forward(self,x:torch.FloatTensor)->torch.FloatTensor:
         for layer in self.layers[:-1]:
             x = self.activation(layer(x))
-        return self.layers[-1](x)
+        return self.relu(self.layers[-1](x))
         
 
 TOY_REACTIONS = [
@@ -159,7 +160,8 @@ class Cell:
                  shape:Shape,
                  observable_env_states:list[str],
                  controlled_params:list,
-                 initial_conditions:dict[str,float]
+                 initial_conditions:dict[str,float],
+                 gamma:float=1
                  ):
         self.name = name
         self.stoichiometry = stoichiometry
@@ -176,6 +178,7 @@ class Cell:
         self.state_variables = self.get_state_variables()
         self.number_index=self.state_variables.index("number")
         self.volume_index=self.state_variables.index("volume")
+        self.gamma=gamma
         self.kinetics={}
         self.observable_states = [ind for ind,i in enumerate(self.state_variables) if not i.endswith("_env") or i in observable_env_states]
         self._set_policy()
@@ -229,8 +232,7 @@ class Cell:
         self.parameters.update(new_params)
     
     def decide(self)->torch.FloatTensor:
-        self.actions=self.policy(torch.FloatTensor(self.state.take(self.observable_states)))
-        self.actions=torch.clamp(self.actions,0,1)
+        self.actions=self.policy(torch.FloatTensor(self.state.take(self.observable_states))).detach()
         return self.actions
     
     def evaluate(self,observables:torch.FloatTensor)->torch.FloatTensor:
@@ -260,6 +262,12 @@ class Cell:
     @property
     def reward(self)->float:
         return self.number
+
+    def process_data(self,data:dict[str,np.ndarray])->None:
+        data["s`"]=torch.FloatTensor(data["s`"])
+        data["r"]=torch.FloatTensor(data["r"])
+        data["a"]=torch.FloatTensor(data["a"])
+        data["s"]=torch.FloatTensor(data["s"])
         
     
     
@@ -349,6 +357,7 @@ class Trainer:
                  env:Environment,
                  episodes_per_batch:int,
                  steps_per_episode:int,
+                 number_of_batches:int,
                  save_every:int,
                  save_path:str,
                  parallel_framework:str="ray",
@@ -357,6 +366,7 @@ class Trainer:
         self.env=env
         self.episodes_per_batch=episodes_per_batch
         self.steps_per_episode=steps_per_episode
+        self.number_of_batches=number_of_batches
         self.save_every=save_every
         self.save_path=save_path
         self.parallel_framework=parallel_framework
@@ -368,10 +378,42 @@ class Trainer:
             results=ray.get([run_episode_ray.remote(self.env,self.steps_per_episode) for i in range(self.episodes_per_batch)])
         elif self.parallel_framework=="native":
             pass
+        return results
     
     def train(self):
-        pass
-    
+        for i in range(self.number_of_batches):
+            res=self.run_batch()
+            data={agent.name:{} for agent in self.env.cells}
+            for episode in res:
+                for step in episode:
+                    for agent in self.env.cells:
+                        data[agent.name].setdefault("r",[]).append(step[1][agent.name])
+                        data[agent.name].setdefault("a",[]).append(step[2][agent.name])
+                        data[agent.name].setdefault("s",[]).append(step[3][agent.name])
+                for agent in self.env.cells:
+                    data[agent.name].setdefault("rtgs",[]).append(calculate_rtgs(data[agent.name]["r"][-len(episode):],agent.gamma))
+        
+            for agent in self.env.cells:
+                data[agent.name]["r"]=np.array(data[agent.name]["r"])
+                data[agent.name]["a"]=np.array(data[agent.name]["a"])
+                data[agent.name]["s"]=np.array(data[agent.name]["s"])
+                data[agent.name]["rtgs"]=np.hstack(data[agent.name]["rtgs"])
+            
+            pass
+
+                
+                
+                           
+
+                
+                
+def calculate_rtgs(rewards:np.ndarray,gamma:float)->np.ndarray:
+    rtgs=[]
+    rtg=0
+    for i in reversed(rewards):
+        rtg=i+gamma*rtg
+        rtgs.insert(0,rtg)
+    return rtgs
     
     
     
@@ -760,6 +802,9 @@ if __name__ == "__main__":
                     initial_conditions={"S_env":10},
                     extra_states=[],
                     controllers={"S_env":S_controller},time_step=0.01)
+    
+    trainer=Trainer(env,8,1000,10,10,"./",parallel_framework="ray")
+    trainer.train()
     
 
 
