@@ -8,7 +8,7 @@ import torch
 from torch.distributions import Normal
 from typing import Iterable
 import ray 
-
+EPS=1e-10
 class Network(torch.nn.Module):
     def __init__(self, input_dim:int, output_dim:int, hidden_layers:tuple[int], activation:torch.nn.Module):
         super().__init__()
@@ -161,7 +161,8 @@ class Cell:
                  observable_env_states:list[str],
                  controlled_params:list,
                  initial_conditions:dict[str,float],
-                 gamma:float=1
+                 gamma:float=1,
+                 grad_updates:int=10
                  ):
         self.name = name
         self.stoichiometry = stoichiometry
@@ -191,6 +192,7 @@ class Cell:
         self.env_metabolites=[ind for ind,i in enumerate(self.state_variables) if i.endswith("_env")]
         self.environment=None
         self.reset()
+        self.grad_updates=grad_updates
         
         
         
@@ -231,18 +233,28 @@ class Cell:
     def update_parameters(self,new_params:dict)->None:
         self.parameters.update(new_params)
     
-    def decide(self)->torch.FloatTensor:
-        self.actions=self.policy(torch.FloatTensor(self.state.take(self.observable_states))).detach()
-        return self.actions
+    def decide(self)->tuple[torch.FloatTensor]:
+        outs=self.policy(torch.FloatTensor(self.state.take(self.observable_states))).view(len(self.controlled_params),2)
+        dist=Normal(outs[:,0],outs[:,1]+EPS)
+        self.actions=dist.sample()
+        self.log_prob =torch.sum(dist.log_prob(self.actions)).detach()
+        return self.actions,self.log_prob
     
-    def evaluate(self,observables:torch.FloatTensor)->torch.FloatTensor:
-        return self.value(observables)
+    def evaluate(self,
+                 batch_states:torch.FloatTensor,
+                 batch_actions:torch.FloatTensor)->tuple[torch.FloatTensor]:
+        outs=self.policy(batch_states).view(-1,len(self.controlled_params),2)
+        dist=Normal(outs[:,:,0],outs[:,:,1]+EPS)
+        log_prob = torch.sum(dist.log_prob(batch_actions),dim=1)
+        v=self.value(batch_states)
+        return v,log_prob
+
     
     def _decision_to_params(self,decision:torch.FloatTensor)->dict:
         return dict(zip(self.controlled_params,decision))
     
     def _set_policy(self)->None:
-        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10),torch.nn.ReLU())
+        self.policy = Network(len(self.observable_states),len(self.controlled_params)*2,(10,10),torch.nn.ReLU())
     
     def _set_value(self)->None:
         self.value = Network(len(self.observable_states),1,(10,10),torch.nn.ReLU())
@@ -324,6 +336,7 @@ class Environment:
             cell.reset()
         self.pass_env_states()
         return
+    
     def step(self)->dict[str,np.ndarray]:
         ### to update the information of the agents about the environment
         self.pass_env_states()
@@ -349,7 +362,7 @@ class Environment:
         
         self.pass_env_states()
 
-        return ({cell.name:cell.state.take(cell.observable_states) for cell in self.cells},rewards,actions,previous_states)
+        return ({cell.name:cell.state.take(cell.observable_states) for cell in self.cells},rewards,actions,previous_states,{cell.name:cell.log_prob for cell in self.cells})
                 
 class Trainer:
     """This is a class to train the agents in a given environment"""
@@ -390,16 +403,37 @@ class Trainer:
                         data[agent.name].setdefault("r",[]).append(step[1][agent.name])
                         data[agent.name].setdefault("a",[]).append(step[2][agent.name])
                         data[agent.name].setdefault("s",[]).append(step[3][agent.name])
+                        data[agent.name].setdefault("log_prob",[]).append(step[4][agent.name])
                 for agent in self.env.cells:
                     data[agent.name].setdefault("rtgs",[]).append(calculate_rtgs(data[agent.name]["r"][-len(episode):],agent.gamma))
         
             for agent in self.env.cells:
-                data[agent.name]["r"]=np.array(data[agent.name]["r"])
-                data[agent.name]["a"]=np.array(data[agent.name]["a"])
-                data[agent.name]["s"]=np.array(data[agent.name]["s"])
-                data[agent.name]["rtgs"]=np.hstack(data[agent.name]["rtgs"])
+                data[agent.name]["r"]=torch.FloatTensor(np.array(data[agent.name]["r"]))
+                data[agent.name]["a"]=torch.FloatTensor(np.array(data[agent.name]["a"]))
+                data[agent.name]["s"]=torch.FloatTensor(np.array(data[agent.name]["s"]))
+                data[agent.name]["rtgs"]=torch.FloatTensor(np.hstack(data[agent.name]["rtgs"]))
+                data[agent.name]["log_prob"]=torch.FloatTensor(np.array(data[agent.name]["log_prob"]))
+                for _ in range(agent.grad_updates):
+                    v,lps=agent.evaluate(data[agent.name]["s"],data[agent.name]["a"])
+                    a_k=data[agent.name]["rtgs"].unsqueeze(dim=1)-v.detach()
+                    a_k=(a_k - a_k.mean()) / (a_k.std() + 1e-5)
+                    ratios = torch.exp( lps - data[agent.name]["log_prob"])
+                    surr1 = ratios * a_k
+                    surr2 = torch.clamp(ratios, 1-self.clip, 1+self.clip) * a_k
+                    actor_loss = -torch.min(surr1, surr2).mean()
+                    critic_loss = torch.nn.MSELoss()(v,data[agent.name]["rtgs"])
+                    self.optimizer_policy_.zero_grad()
+                    actor_loss.backward(retain_graph=False)
+                    agent.optimizer_policy_.step()
+                    agent.optimizer_value_.zero_grad()
+                    critic_loss.backward()
+                    agent.optimizer_value_.step()
+                    
+                    
+
+                    
             
-            pass
+            
 
                 
                 
@@ -564,7 +598,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
                 
         
     ### Now we calculate the fluxes for each reaction
-    actions=model.decide()
+    actions=model.decide()[0]
     model.parameters.update(dict(zip(model.controlled_params,actions)))
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = model.kinetics.setdefault("S_import",
