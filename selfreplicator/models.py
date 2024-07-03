@@ -8,7 +8,8 @@ import torch
 from torch.distributions import Normal
 from typing import Iterable
 import ray 
-EPS=1e-10
+ray.init(log_to_driver=False,ignore_reinit_error=True)
+EPS=1e-6
 class Network(torch.nn.Module):
     def __init__(self, input_dim:int, output_dim:int, hidden_layers:tuple[int], activation:torch.nn.Module):
         super().__init__()
@@ -162,7 +163,12 @@ class Cell:
                  controlled_params:list,
                  initial_conditions:dict[str,float],
                  gamma:float=1,
-                 grad_updates:int=10
+                 grad_updates:int=10,
+                 policy_lr:float=1e-3,
+                 value_lr:float=1e-3,
+                 optimizer_policy:torch.optim.Optimizer=torch.optim.Adam,
+                 optimizer_value:torch.optim.Optimizer=torch.optim.Adam,
+                 clip:float=0.1
                  ):
         self.name = name
         self.stoichiometry = stoichiometry
@@ -181,9 +187,15 @@ class Cell:
         self.volume_index=self.state_variables.index("volume")
         self.gamma=gamma
         self.kinetics={}
+        self.cell_metabolites=[ind for ind,i in enumerate(self.state_variables) if not i.endswith("_env") and i!="number"]
         self.observable_states = [ind for ind,i in enumerate(self.state_variables) if not i.endswith("_env") or i in observable_env_states]
         self._set_policy()
         self._set_value()
+        self.policy_lr=policy_lr
+        self.value_lr=value_lr
+        self.optimizer_policy=optimizer_policy
+        self.optimizer_value=optimizer_value
+        self.set_optimizers()
         for dim,val in self.shape.get_dimensions().items():
             initial_conditions[dim]=val
         initial_conditions["volume"]=self.shape.volume
@@ -193,6 +205,7 @@ class Cell:
         self.environment=None
         self.reset()
         self.grad_updates=grad_updates
+        self.clip=clip
         
         
         
@@ -237,6 +250,7 @@ class Cell:
         outs=self.policy(torch.FloatTensor(self.state.take(self.observable_states))).view(len(self.controlled_params),2)
         dist=Normal(outs[:,0],outs[:,1]+EPS)
         self.actions=dist.sample()
+        self.actions[self.actions<0]=0
         self.log_prob =torch.sum(dist.log_prob(self.actions)).detach()
         return self.actions,self.log_prob
     
@@ -273,13 +287,17 @@ class Cell:
     
     @property
     def reward(self)->float:
-        return self.number
+        return self.state[self.number_index]
 
     def process_data(self,data:dict[str,np.ndarray])->None:
         data["s`"]=torch.FloatTensor(data["s`"])
         data["r"]=torch.FloatTensor(data["r"])
         data["a"]=torch.FloatTensor(data["a"])
         data["s"]=torch.FloatTensor(data["s"])
+    
+    def set_optimizers(self)->None:
+        self.optimizer_policy_=self.optimizer_policy(self.policy.parameters(),lr=self.policy_lr)
+        self.optimizer_value_=self.optimizer_value(self.value.parameters(),lr=self.value_lr)
         
     
     
@@ -419,15 +437,19 @@ class Trainer:
                     a_k=(a_k - a_k.mean()) / (a_k.std() + 1e-5)
                     ratios = torch.exp( lps - data[agent.name]["log_prob"])
                     surr1 = ratios * a_k
-                    surr2 = torch.clamp(ratios, 1-self.clip, 1+self.clip) * a_k
+                    surr2 = torch.clamp(ratios, 1-agent.clip, 1+agent.clip) * a_k
                     actor_loss = -torch.min(surr1, surr2).mean()
-                    critic_loss = torch.nn.MSELoss()(v,data[agent.name]["rtgs"])
-                    self.optimizer_policy_.zero_grad()
+                    critic_loss = torch.nn.MSELoss()(v,data[agent.name]["rtgs"].unsqueeze(dim=1))
+                    agent.optimizer_policy_.zero_grad()
                     actor_loss.backward(retain_graph=False)
                     agent.optimizer_policy_.step()
                     agent.optimizer_value_.zero_grad()
                     critic_loss.backward()
                     agent.optimizer_value_.step()
+            print(f"Batch {i} completed:")
+            for agent in self.env.cells:
+                rew_avg=data[agent.name]["r"].reshape(self.episodes_per_batch,self.steps_per_episode).sum(axis=1).mean().item()
+                print(f"Avg reward for {agent.name} is {rew_avg}")
                     
                     
 
@@ -566,7 +588,7 @@ def toy_model_stoichiometry(model:Cell)->np.ndarray:
     s[[model.state_variables.index("P"),model.state_variables.index("P_env")],model.reactions.index("P_export")] = [-1,1]
     
     s[list(map(model.state_variables.index,["AA","Li","W"])),
-      model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r102"],1]
+      model.reactions.index("AA_and_li_to_W")] = [model.parameters["r101"],model.parameters["r102"],10]
     
     s[list(map(model.state_variables.index,["e","t1"])),model.reactions.index("e_to_t1")] = [-1,1]
     s[list(map(model.state_variables.index,["e","e1"])),model.reactions.index("e_to_e1")] = [-1,1]
@@ -591,8 +613,8 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
         for dim,val in model.shape.get_dimensions().items():
             y[model.state_variables.index(dim)] = val
         
-        for i in model.cell_metabolites:
-            y[model.state_variables.index(i)]=y[model.state_variables.index(i)]/2
+        
+        y[model.cell_metabolites]=y[model.cell_metabolites]/2
         
         model.state[model.number_index]=model.state[model.number_index]*2
                 
@@ -723,7 +745,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
 
                                                                          
     v=np.matmul(model.stoichiometry(model),fluxes) 
-    dvdt=model.parameters["lipid_density"]*v[model.state_variables.index("W")]
+    dvdt=v[model.state_variables.index("W")]/model.parameters["lipid_density"]
     for dim in model.shape.dimensions.keys():
         v[model.state_variables.index(dim)] = model.shape.calculate_differentials(dvdt)[dim]
     
@@ -810,8 +832,8 @@ if __name__ == "__main__":
                "p82":1,
                "r101":-1,
                "r102":-1,
-               "lipid_density":0.05,
-               "split_volume":0.04,
+               "lipid_density":0.01,
+               "split_volume":0.01,
                },
               TOY_REACTIONS,
               TOY_SPECIES,
@@ -820,6 +842,13 @@ if __name__ == "__main__":
                                  "k_e2",
                                  "k_e3",
                                  "k_e4",
+                                 "k_e5",
+                                 "k_e6",
+                                 "k_e7",
+                                 "k_e8",
+                                 "k_t1",
+                                 "k_t2",
+                                    
                                  ],
               observable_env_states=["S_env","time_env","P_env"],
               initial_conditions={i:0.1 for i in TOY_SPECIES}
@@ -829,14 +858,14 @@ if __name__ == "__main__":
     def S_controller(state:dict[str,float])->float:
         amplitude=10
         period=10
-        return amplitude*np.abs(np.sin(2*np.pi*state["time_env"]/period))
+        return amplitude*np.abs(np.sin(100*np.pi*state["time_env"]/period))
          
     env=Environment(name="Toy Model Environment",
                     cells=[cell],
                     initial_conditions={"S_env":10},
                     extra_states=[],
                     controllers={"S_env":S_controller},time_step=0.01)
-    
+    env.step()
     trainer=Trainer(env,8,1000,10,10,"./",parallel_framework="ray")
     trainer.train()
     
