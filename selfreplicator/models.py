@@ -164,7 +164,7 @@ class Cell:
                  controlled_params:list,
                  initial_conditions:dict[str,float],
                  gamma:float=1,
-                 grad_updates:int=5,
+                 grad_updates:int=2,
                  policy_lr:float=5e-3,
                  value_lr:float=5e-3,
                  optimizer_policy:torch.optim.Optimizer=torch.optim.Adam,
@@ -248,8 +248,8 @@ class Cell:
         self.parameters.update(new_params)
     
     def decide(self)->tuple[torch.FloatTensor]:
-        outs=self.policy(torch.FloatTensor(self.state.take(self.observable_states))).view(len(self.controlled_params),2)
-        dist=Normal(outs[:,0],outs[:,1]+EPS)
+        outs=self.policy(torch.FloatTensor(self.state.take(self.observable_states)))
+        dist=Normal(outs,torch.abs(outs)*0.1+EPS)
         self.actions=dist.sample()
         self.actions[self.actions<0]=0
         self.log_prob =torch.sum(dist.log_prob(self.actions)).detach()
@@ -258,8 +258,8 @@ class Cell:
     def evaluate(self,
                  batch_states:torch.FloatTensor,
                  batch_actions:torch.FloatTensor)->tuple[torch.FloatTensor]:
-        outs=self.policy(batch_states).view(-1,len(self.controlled_params),2)
-        dist=Normal(outs[:,:,0],outs[:,:,1]+EPS)
+        outs=self.policy(batch_states)
+        dist=Normal(outs,torch.abs(outs.detach())*0.1+EPS)
         log_prob = torch.sum(dist.log_prob(batch_actions),dim=1)
         v=self.value(batch_states)
         return v,log_prob
@@ -269,10 +269,10 @@ class Cell:
         return dict(zip(self.controlled_params,decision))
     
     def _set_policy(self)->None:
-        self.policy = Network(len(self.observable_states),len(self.controlled_params)*2,(10,10),torch.nn.ReLU())
+        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10,10,10,10,10),torch.nn.ReLU())
     
     def _set_value(self)->None:
-        self.value = Network(len(self.observable_states),1,(10,10),torch.nn.ReLU())
+        self.value = Network(len(self.observable_states),1,(10,10,10,10,10,10),torch.nn.ReLU())
     
     def reset(self)->None:
         self.state=self.initial_state
