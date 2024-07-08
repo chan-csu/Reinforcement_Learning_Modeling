@@ -165,8 +165,8 @@ class Cell:
                  initial_conditions:dict[str,float],
                  gamma:float=1,
                  grad_updates:int=5,
-                 policy_lr:float=1e-3,
-                 value_lr:float=1e-3,
+                 policy_lr:float=5e-3,
+                 value_lr:float=5e-3,
                  optimizer_policy:torch.optim.Optimizer=torch.optim.Adam,
                  optimizer_value:torch.optim.Optimizer=torch.optim.Adam,
                  clip:float=0.1
