@@ -269,13 +269,14 @@ class Cell:
         return dict(zip(self.controlled_params,decision))
     
     def _set_policy(self)->None:
-        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10,10,10,10,10),torch.nn.ReLU())
+        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10),torch.nn.ReLU())
     
     def _set_value(self)->None:
-        self.value = Network(len(self.observable_states),1,(10,10,10,10,10,10),torch.nn.ReLU())
+        self.value = Network(len(self.observable_states),1,(10,10),torch.nn.ReLU())
     
     def reset(self)->None:
         self.state=self.initial_state
+        self.reward=0
         return
     
     @property
@@ -288,7 +289,11 @@ class Cell:
     
     @property
     def reward(self)->float:
-        return self.state[self.state_variables.index("P_env")]
+        return self._reward
+    
+    @reward.setter
+    def reward(self,reward:float)->None:
+        self._reward=reward
 
     def process_data(self,data:dict[str,np.ndarray])->None:
         data["s`"]=torch.FloatTensor(data["s`"])
@@ -615,7 +620,6 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     y[y<0]=0
     model.shape.set_dimensions({key:y[model.state_variables.index(key)] for key in model.shape.dimensions.keys()})
     y[model.volume_index]=model.shape.volume
-    
     if model.can_double(y):
         model.shape.set_dim_from_volume(model.shape.volume/2)
         for dim,val in model.shape.get_dimensions().items():
@@ -625,6 +629,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
         y[model.cell_metabolites]=y[model.cell_metabolites]/2
         
         model.state[model.number_index]=model.state[model.number_index]*2
+
                 
         
     ### Now we calculate the fluxes for each reaction
@@ -739,6 +744,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     
     for i in model.env_metabolites:
         v[i]*=model.number
+    model.reward = v[model.state_variables.index("P_env")]
     return v
 
 def forward_euler(ode:callable,initial_conditions:np.ndarray,t:np.ndarray,args:tuple)->np.ndarray:
@@ -854,7 +860,7 @@ if __name__ == "__main__":
                     extra_states=[],
                     controllers={"S_env":S_controller},time_step=0.05)
     env.step()
-    trainer=Trainer(env,8,1000,5000,200,"./",parallel_framework="ray")
+    trainer=Trainer(env,8,500,5000,200,"./",parallel_framework="ray")
     trainer.train()
     
 
