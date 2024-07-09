@@ -60,6 +60,7 @@ if __name__ == "__main__":
     data3 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_400.pkl"
     data4 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_600.pkl"
     data5 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_800.pkl"
+    data6 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_2000.pkl"
     compare=CompareDataProcessor(
         {
             "data1":BatchDataProcessor(data1,8),
@@ -67,6 +68,7 @@ if __name__ == "__main__":
             "data3":BatchDataProcessor(data3,8),
             "data4":BatchDataProcessor(data4,8),
             "data5":BatchDataProcessor(data5,8),
+            "data6":BatchDataProcessor(data6,8),
         }
     )
     compare.compare_states("Toy Model","P_env")

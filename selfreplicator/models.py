@@ -165,8 +165,8 @@ class Cell:
                  initial_conditions:dict[str,float],
                  gamma:float=1,
                  grad_updates:int=2,
-                 policy_lr:float=5e-3,
-                 value_lr:float=5e-3,
+                 policy_lr:float=0.005,
+                 value_lr:float=0.01,
                  optimizer_policy:torch.optim.Optimizer=torch.optim.Adam,
                  optimizer_value:torch.optim.Optimizer=torch.optim.Adam,
                  clip:float=0.1
@@ -249,7 +249,7 @@ class Cell:
     
     def decide(self)->tuple[torch.FloatTensor]:
         outs=self.policy(torch.FloatTensor(self.state.take(self.observable_states)))
-        dist=Normal(outs,torch.abs(outs)*0.1+EPS)
+        dist=Normal(outs,torch.abs(outs)*0.2+EPS)
         self.actions=dist.sample()
         self.actions[self.actions<0]=0
         self.log_prob =torch.sum(dist.log_prob(self.actions)).detach()
@@ -259,7 +259,7 @@ class Cell:
                  batch_states:torch.FloatTensor,
                  batch_actions:torch.FloatTensor)->tuple[torch.FloatTensor]:
         outs=self.policy(batch_states)
-        dist=Normal(outs,torch.abs(outs.detach())*0.1+EPS)
+        dist=Normal(outs,torch.abs(outs.detach())*0.2+EPS)
         log_prob = torch.sum(dist.log_prob(batch_actions),dim=1)
         v=self.value(batch_states)
         return v,log_prob
@@ -437,6 +437,8 @@ class Trainer:
                 data[agent.name]["s"]=torch.FloatTensor(np.array(data[agent.name]["s"]))
                 data[agent.name]["rtgs"]=torch.FloatTensor(np.hstack(data[agent.name]["rtgs"]))
                 data[agent.name]["log_prob"]=torch.FloatTensor(np.array(data[agent.name]["log_prob"]))
+                
+                
                 for _ in range(agent.grad_updates):
                     v,lps=agent.evaluate(data[agent.name]["s"],data[agent.name]["a"])
                     a_k=data[agent.name]["rtgs"].unsqueeze(dim=1)-v.detach()
@@ -444,7 +446,7 @@ class Trainer:
                     ratios = torch.exp( lps - data[agent.name]["log_prob"])
                     surr1 = ratios * a_k
                     surr2 = torch.clamp(ratios, 1-agent.clip, 1+agent.clip) * a_k
-                    actor_loss = -torch.min(surr1, surr2).mean()
+                    actor_loss = - torch.min(surr1, surr2).mean()
                     critic_loss = torch.nn.MSELoss()(v,data[agent.name]["rtgs"].unsqueeze(dim=1))
                     agent.optimizer_policy_.zero_grad()
                     actor_loss.backward(retain_graph=False)
@@ -761,10 +763,10 @@ if __name__ == "__main__":
     cell=Cell("Toy Model",
               toy_model_stoichiometry,
               toy_model_ode,
-              {"ka1":100,
-               "kb1":10,
+              {"ka1":1,
+               "kb1":1,
                "kab1":1,
-               "vm1":100,
+               "vm1":1,
                "ka2":1,
                "kb2":1,
                "kab2":1,
@@ -784,7 +786,7 @@ if __name__ == "__main__":
                "ka6":1,
                "kb6":1,
                "kab6":1,
-               "vm6":0.1,
+               "vm6":1,
                "ka7":1,
                "kb7":1,
                "kab7":1,
@@ -801,13 +803,13 @@ if __name__ == "__main__":
                "kb10":1,
                "kab10":1,
                "vm10":1,
-               "k_t1":10,
+               "k_t1":1,
                "k_e1":1,
                "k_e2":1,
                "k_e3":1,
                "k_e4":1,
                "k_e5":1,
-               "k_e6":10,
+               "k_e6":1,
                "k_e7":1,
                "k_e8":1,
                "k_t2":1,
@@ -832,7 +834,8 @@ if __name__ == "__main__":
               TOY_REACTIONS,
               TOY_SPECIES,
               s,
-              controlled_params=["k_e1",
+              controlled_params=[
+                                 "k_e1",
                                  "k_e2",
                                  "k_e3",
                                  "k_e4",
@@ -842,15 +845,15 @@ if __name__ == "__main__":
                                  "k_e8",
                                  "k_t1",
                                  "k_t2",
-                                    
                                  ],
               observable_env_states=["S_env","time_env","P_env"],
-              initial_conditions={i:0.1 for i in TOY_SPECIES}
+              initial_conditions={i:0.1 for i in TOY_SPECIES},
+              grad_updates=5
               
               )
     
     def S_controller(state:dict[str,float])->float:
-        amplitude=100
+        amplitude=10
         period=10
         return amplitude*max(np.sin(2*np.pi*state["time_env"]/period),0)
          
@@ -858,7 +861,8 @@ if __name__ == "__main__":
                     cells=[cell],
                     initial_conditions={"S_env":10},
                     extra_states=[],
-                    controllers={"S_env":S_controller},time_step=0.05)
+                    controllers={"S_env":S_controller},
+                    time_step=0.05)
     env.step()
     trainer=Trainer(env,8,500,5000,200,"./",parallel_framework="ray")
     trainer.train()
