@@ -1,6 +1,7 @@
 import pickle as pkl
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go 
 
 class BatchDataProcessor:
     def __init__(self,
@@ -29,16 +30,66 @@ class BatchDataProcessor:
         df=pd.DataFrame(pd.DataFrame(self._data[agent]["s"].numpy().reshape((-1,self.batch_size,len(self.state_vars[agent])),order='F').mean(axis=1),columns=self.state_vars[agent]))
         fig=px.line(df,x=df.index,y=df.columns)
         fig.show()
+    
+    def visualize_rewards(self,agent:str):
+        df=pd.DataFrame(self._data[agent]["avg_rewa"],columns=["rewards"])
+        fig=px.line(df,x=df.index,y=df.columns)
+        fig.show()
         
+
+class CompareDataProcessor:
+    def __init__(self,
+                 data:dict[str:BatchDataProcessor],
+                ):
+        self.data = data
+        
+    def compare_states(self,agent:str,on:str='all')->None:
+        collector={key:pd.DataFrame(pd.DataFrame(value._data[agent]["s"].numpy().reshape((-1,value.batch_size,len(value.state_vars[agent])),order='F').mean(axis=1),columns=value.state_vars[agent])) for key,value in self.data.items()}
+        if on=='all':
+            fig=go.Figure()
+            for key in collector.keys():
+                fig.add_trace(go.Scatter(x=collector[key].index,y=collector[key].mean(axis=1),mode='lines',name=key))
+            
+            fig.show()
+        else:
+            fig=go.Figure()
+            for key in collector.keys():
+                fig.add_trace(go.Scatter(x=collector[key].index,y=collector[key][on],mode='lines',name=key))
+
+            fig.show()
+    
+    def compare_actions(self,agent:str,on:str='all')->None:
+        collector={key:pd.DataFrame(value._data[agent]["a"].numpy().reshape((-1,value.batch_size,len(value.action_vars[agent])),order='F').mean(axis=1),columns=value.action_vars[agent]) for key,value in self.data.items()}
+        if on=='all':
+            fig=go.Figure()
+            for key in collector.keys():
+                fig.add_trace(go.Scatter(x=collector[key].index,y=collector[key].mean(axis=1),mode='lines',name=key))
+            
+            fig.show()
+        else:
+            fig=go.Figure()
+            for key in collector.keys():
+                fig.add_trace(go.Scatter(x=collector[key].index,y=collector[key][on],mode='lines',name=key))
+
+            fig.show()
         
 if __name__ == "__main__":
-    data = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_0.pkl"
-    batch_size = 8
-    BatchDataProcessor(
-        data=data,
-        batch_size=batch_size,
-    ).visualize_actions(agent="Toy Model")
-
+    data1 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_0.pkl"
+    data2 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_600.pkl"
+    data3 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_400.pkl"
+    d1=BatchDataProcessor(data1,8)
+    d2=BatchDataProcessor(data2,8)
+    d2.visualize_rewards("Toy Model")
+    # compare=CompareDataProcessor(
+    #     {
+    #         "data1":BatchDataProcessor(data1,8),
+    #         "data2":BatchDataProcessor(data2,8),
+    #         "data3":BatchDataProcessor(data3,8),
+    #     }
+    # )
+    # compare.compare_states("Toy Model","P_env")
+    
+    
     
 
 
