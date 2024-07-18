@@ -8,6 +8,7 @@ import torch
 from torch.distributions import Normal
 from typing import Iterable
 import ray 
+import os
 import pickle
 ray.init(log_to_driver=False,ignore_reinit_error=True)
 EPS=1e-6
@@ -23,12 +24,11 @@ class Network(torch.nn.Module):
         for i in range(1,len(self.hidden_layers)):
             self.layers.append(torch.nn.Linear(self.hidden_layers[i-1],self.hidden_layers[i]))
         self.layers.append(torch.nn.Linear(self.hidden_layers[-1],self.output_dim))
-        self.relu=torch.nn.ReLU()
         
     def forward(self,x:torch.FloatTensor)->torch.FloatTensor:
         for layer in self.layers[:-1]:
             x = self.activation(layer(x))
-        return self.relu(self.layers[-1](x))
+        return self.layers[-1](x)
         
 
 TOY_REACTIONS = [
@@ -162,6 +162,7 @@ class Cell:
                  shape:Shape,
                  observable_env_states:list[str],
                  controlled_params:list,
+                 ranges:list[list],
                  initial_conditions:dict[str,float],
                  gamma:float=1,
                  grad_updates:int=2,
@@ -169,7 +170,7 @@ class Cell:
                  value_lr:float=0.01,
                  optimizer_policy:torch.optim.Optimizer=torch.optim.Adam,
                  optimizer_value:torch.optim.Optimizer=torch.optim.Adam,
-                 clip:float=0.1
+                 clip:float=0.2
                  ):
         self.name = name
         self.stoichiometry = stoichiometry
@@ -183,6 +184,7 @@ class Cell:
         else:
             raise Exception("The controlled parameters should be a subset of parameters")
         
+        self.ranges = torch.FloatTensor(ranges)
         self.state_variables = self.get_state_variables()
         self.number_index=self.state_variables.index("number")
         self.volume_index=self.state_variables.index("volume")
@@ -249,9 +251,10 @@ class Cell:
     
     def decide(self)->tuple[torch.FloatTensor]:
         outs=self.policy(torch.FloatTensor(self.state.take(self.observable_states)))
-        dist=Normal(outs,torch.abs(outs)*0.2+EPS)
+        # dist=Normal(outs,torch.abs(outs)*0.1+EPS)
+        dist=Normal(outs,0.1)
         self.actions=dist.sample()
-        self.actions[self.actions<0]=0
+        self.actions=torch.clamp(self.actions,self.ranges[:,0],self.ranges[:,1])
         self.log_prob =torch.sum(dist.log_prob(self.actions)).detach()
         return self.actions,self.log_prob
     
@@ -259,7 +262,8 @@ class Cell:
                  batch_states:torch.FloatTensor,
                  batch_actions:torch.FloatTensor)->tuple[torch.FloatTensor]:
         outs=self.policy(batch_states)
-        dist=Normal(outs,torch.abs(outs.detach())*0.2+EPS)
+        # dist=Normal(outs,torch.abs(outs.detach())*0.1+EPS)
+        dist=Normal(outs,0.1)
         log_prob = torch.sum(dist.log_prob(batch_actions),dim=1)
         v=self.value(batch_states)
         return v,log_prob
@@ -269,10 +273,10 @@ class Cell:
         return dict(zip(self.controlled_params,decision))
     
     def _set_policy(self)->None:
-        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10),torch.nn.ReLU())
+        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10,10,10,10,10),torch.nn.Tanh())
     
     def _set_value(self)->None:
-        self.value = Network(len(self.observable_states),1,(10,10),torch.nn.ReLU())
+        self.value = Network(len(self.observable_states),1,(10,10,10,10,10,10),torch.nn.Tanh())
     
     def reset(self)->None:
         self.state=self.initial_state
@@ -418,9 +422,11 @@ class Trainer:
         return results
     
     def train(self):
+        returns={agent.name:[] for agent in self.env.cells}
         for i in range(self.number_of_batches):
             res=self.run_batch()
             data={agent.name:{} for agent in self.env.cells}
+            sum_rewards={agent.name:[] for agent in self.env.cells}
             for episode in res:
                 for step in episode:
                     for agent in self.env.cells:
@@ -430,6 +436,9 @@ class Trainer:
                         data[agent.name].setdefault("log_prob",[]).append(step[4][agent.name])
                 for agent in self.env.cells:
                     data[agent.name].setdefault("rtgs",[]).append(calculate_rtgs(data[agent.name]["r"][-len(episode):],agent.gamma))
+                    sum_rewards[agent.name].append(np.sum(data[agent.name]["r"][-len(episode):]))
+                    
+            
         
             for agent in self.env.cells:
                 data[agent.name]["r"]=torch.FloatTensor(np.array(data[agent.name]["r"]))
@@ -437,6 +446,8 @@ class Trainer:
                 data[agent.name]["s"]=torch.FloatTensor(np.array(data[agent.name]["s"]))
                 data[agent.name]["rtgs"]=torch.FloatTensor(np.hstack(data[agent.name]["rtgs"]))
                 data[agent.name]["log_prob"]=torch.FloatTensor(np.array(data[agent.name]["log_prob"]))
+                returns[agent.name].append(np.mean(sum_rewards[agent.name]))
+                data[agent.name]["avg_rewa"]=returns[agent.name]
                 
                 
                 for _ in range(agent.grad_updates):
@@ -456,13 +467,14 @@ class Trainer:
                     agent.optimizer_value_.step()
             print(f"Batch {i} completed:")
             for agent in self.env.cells:
-                rew_avg=data[agent.name]["r"].reshape(self.episodes_per_batch,self.steps_per_episode).sum(axis=1).mean().item()
-                print(f"Avg reward for {agent.name} is {rew_avg}")
+                print(f"Avg reward for {agent.name} is {returns[agent.name][-1]}")
             
             if i%self.save_every==0:
                 for agent in self.env.cells:
                     data[agent.name]["state_vars"]=agent.state_variables
                     data[agent.name]["action_vars"]=agent.controlled_params
+                if not os.path.exists(self.save_path):
+                    os.makedirs(self.save_path)
                 with open(f"{self.save_path}/data_batch_{i}.pkl","wb") as f:
                     pickle.dump(data,f)
                     
@@ -632,6 +644,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
         
         model.state[model.number_index]=model.state[model.number_index]*2
 
+
                 
         
     ### Now we calculate the fluxes for each reaction
@@ -746,7 +759,9 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     
     for i in model.env_metabolites:
         v[i]*=model.number
-    model.reward = v[model.state_variables.index("P_env")]
+
+    model.reward = model.number
+
     return v
 
 def forward_euler(ode:callable,initial_conditions:np.ndarray,t:np.ndarray,args:tuple)->np.ndarray:
@@ -759,60 +774,84 @@ def forward_euler(ode:callable,initial_conditions:np.ndarray,t:np.ndarray,args:t
     return y
 
 if __name__ == "__main__":
-    s=Sphere({"r":0.1,"t":0.5})
+    s=Sphere({"r":0.00001,"t":0.0005})
+    ic={i:0.000001 for i in TOY_SPECIES}
+    cps=[
+         "vm1",
+         "vm2",
+         "vm3",
+         "vm4",
+         "vm5",
+         "vm6",
+         "vm7",
+         "vm8",
+         "vm9",
+         "vm10",
+         "k_t1",
+         "k_e1",
+         "k_e2",
+         "k_e3",
+         "k_e4",
+         "k_e5",
+         "k_e6",
+         "k_e7",
+         "k_e8",
+         "k_t2",
+            ]
+    
     cell=Cell("Toy Model",
               toy_model_stoichiometry,
               toy_model_ode,
-              {"ka1":1,
-               "kb1":1,
-               "kab1":1,
-               "vm1":1,
-               "ka2":1,
-               "kb2":1,
-               "kab2":1,
-               "vm2":1,
-               "ka3":1,
-               "kb3":1,
-               "kab3":1,
-               "vm3":1,
-               "ka4":1,
-               "kb4":1,
-               "kab4":1,
-               "vm4":1,
-               "ka5":1,
-               "kb5":1,
-               "kab5":1,
-               "vm5":1,
-               "ka6":1,
-               "kb6":1,
-               "kab6":1,
-               "vm6":1,
-               "ka7":1,
-               "kb7":1,
-               "kab7":1,
-               "vm7":1,
-               "ka8":1,
-               "kb8":1,
-               "kab8":1,
-               "vm8":1,
-               "ka9":1,
-               "kb9":1,
-               "kab9":1,
-               "vm9":1,
-               "ka10":1,
-               "kb10":1,
-               "kab10":1,
-               "vm10":1,
-               "k_t1":1,
-               "k_e1":1,
-               "k_e2":1,
-               "k_e3":1,
-               "k_e4":1,
-               "k_e5":1,
-               "k_e6":1,
-               "k_e7":1,
-               "k_e8":1,
-               "k_t2":1,
+              {"ka1":10,
+               "kb1":10,
+               "kab1":10,
+               "vm1":10,
+               "ka2":10,
+               "kb2":10,
+               "kab2":10,
+               "vm2":10,
+               "ka3":10,
+               "kb3":10,
+               "kab3":10,
+               "vm3":10,
+               "ka4":10,
+               "kb4":10,
+               "kab4":10,
+               "vm4":10,
+               "ka5":10,
+               "kb5":10,
+               "kab5":10,
+               "vm5":10,
+               "ka6":10,
+               "kb6":10,
+               "kab6":10,
+               "vm6":10,
+               "ka7":100,
+               "kb7":10,
+               "kab7":10,
+               "vm7":10,
+               "ka8":100,
+               "kb8":10,
+               "kab8":10,
+               "vm8":10,
+               "ka9":10,
+               "kb9":10,
+               "kab9":10,
+               "vm9":10,
+               "ka10":10,
+               "kb10":10,
+               "kab10":10,
+               "vm10":10,
+               "k_t1":10,
+               "k_e1":10,
+               "k_e2":10,
+               "k_e3":10,
+               "k_e4":10,
+               "k_e5":10,
+               "k_e6":10,
+               "k_e7":10,
+               "k_e8":10,
+               "k_t2":10,
                "p21":1,
                "p22":1,
                "p31":1,
@@ -828,32 +867,25 @@ if __name__ == "__main__":
                "p82":1,
                "r101":-1,
                "r102":-1,
-               "lipid_density":0.1,
-               "split_volume":0.01,
+               "lipid_density":0.01,
+               "split_volume":0.000001,
                },
               TOY_REACTIONS,
               TOY_SPECIES,
               s,
-              controlled_params=[
-                                 "k_e1",
-                                 "k_e2",
-                                 "k_e3",
-                                 "k_e4",
-                                 "k_e5",
-                                 "k_e6",
-                                 "k_e7",
-                                 "k_e8",
-                                 "k_t1",
-                                 "k_t2",
-                                 ],
+              controlled_params=cps,
+              ranges=[[0,100] for i in range(len(cps))],
               observable_env_states=["S_env","time_env","P_env"],
-              initial_conditions={i:0.1 for i in TOY_SPECIES},
-              grad_updates=5
+              initial_conditions=ic,
+              grad_updates=1,
+                policy_lr=0.001,
+                value_lr=0.005,
+                clip=0.2
               
               )
     
     def S_controller(state:dict[str,float])->float:
-        amplitude=10
+        amplitude=100
         period=10
         return amplitude*max(np.sin(2*np.pi*state["time_env"]/period),0)
          
@@ -863,8 +895,8 @@ if __name__ == "__main__":
                     extra_states=[],
                     controllers={"S_env":S_controller},
                     time_step=0.05)
-    env.step()
-    trainer=Trainer(env,8,500,5000,200,"./",parallel_framework="ray")
+    # run_episode(env,100)
+    trainer=Trainer(env,32,500,20000,200,"./replication",parallel_framework="ray")
     trainer.train()
     
 
