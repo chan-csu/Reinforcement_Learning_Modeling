@@ -12,7 +12,26 @@ import os
 import pickle
 ray.init(log_to_driver=False,ignore_reinit_error=True)
 EPS=1e-6
-class Network(torch.nn.Module):
+class ActorNetwork(torch.nn.Module):
+    def __init__(self, input_dim:int, output_dim:int, hidden_layers:tuple[int], activation:torch.nn.Module,ranges:torch.FloatTensor):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_layers = hidden_layers
+        self.activation = activation
+        self.layers = torch.nn.ModuleList()
+        self.layers.append(torch.nn.Linear(self.input_dim,self.hidden_layers[0]))
+        for i in range(1,len(self.hidden_layers)):
+            self.layers.append(torch.nn.Linear(self.hidden_layers[i-1],self.hidden_layers[i]))
+        self.layers.append(torch.nn.Linear(self.hidden_layers[-1],self.output_dim))
+        self.lb=ranges[:,0]
+        self.ub=ranges[:,1]
+    def forward(self,x:torch.FloatTensor)->torch.FloatTensor:
+        for layer in self.layers[:-1]:
+            x = self.activation(layer(x))
+        return self.layers[-1](x).clamp(self.lb,self.ub)
+        
+class CriticNetwork(torch.nn.Module):
     def __init__(self, input_dim:int, output_dim:int, hidden_layers:tuple[int], activation:torch.nn.Module):
         super().__init__()
         self.input_dim = input_dim
@@ -29,8 +48,7 @@ class Network(torch.nn.Module):
         for layer in self.layers[:-1]:
             x = self.activation(layer(x))
         return self.layers[-1](x)
-        
-
+    
 TOY_REACTIONS = [
     "S_import",
     "S_to_I1",
@@ -252,9 +270,10 @@ class Cell:
     def decide(self)->tuple[torch.FloatTensor]:
         outs=self.policy(torch.FloatTensor(self.state.take(self.observable_states)))
         # dist=Normal(outs,torch.abs(outs)*0.1+EPS)
+        
         dist=Normal(outs,0.1)
         self.actions=dist.sample()
-        self.actions=torch.clamp(self.actions,self.ranges[:,0],self.ranges[:,1])
+        self.actions[self.actions<0]=0
         self.log_prob =torch.sum(dist.log_prob(self.actions)).detach()
         return self.actions,self.log_prob
     
@@ -273,10 +292,10 @@ class Cell:
         return dict(zip(self.controlled_params,decision))
     
     def _set_policy(self)->None:
-        self.policy = Network(len(self.observable_states),len(self.controlled_params),(10,10,10,10,10,10),torch.nn.Tanh())
+        self.policy = ActorNetwork(len(self.observable_states),len(self.controlled_params),(50,50,50),torch.nn.Tanh(),torch.FloatTensor(self.ranges))
     
     def _set_value(self)->None:
-        self.value = Network(len(self.observable_states),1,(10,10,10,10,10,10),torch.nn.Tanh())
+        self.value = CriticNetwork(len(self.observable_states),1,(50,50,50),torch.nn.Tanh())
     
     def reset(self)->None:
         self.state=self.initial_state
@@ -634,6 +653,9 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     y[y<0]=0
     model.shape.set_dimensions({key:y[model.state_variables.index(key)] for key in model.shape.dimensions.keys()})
     y[model.volume_index]=model.shape.volume
+    actions=model.decide()[0]
+    model.parameters.update(dict(zip(model.controlled_params,actions)))
+
     if model.can_double(y):
         model.shape.set_dim_from_volume(model.shape.volume/2)
         for dim,val in model.shape.get_dimensions().items():
@@ -648,8 +670,6 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
                 
         
     ### Now we calculate the fluxes for each reaction
-    actions=model.decide()[0]
-    model.parameters.update(dict(zip(model.controlled_params,actions)))
     fluxes = np.zeros(len(model.reactions))
     fluxes[model.reactions.index("S_import")] = PingPong({"ka": model.parameters["ka1"],
                                                                                     "kb": model.parameters["kb1"],
@@ -760,7 +780,7 @@ def toy_model_ode(t:float, y:np.ndarray, model:Cell)->np.ndarray:
     for i in model.env_metabolites:
         v[i]*=model.number
 
-    model.reward = model.number
+    model.reward = v[model.state_variables.index("P_env")]*model.number
 
     return v
 
@@ -775,18 +795,8 @@ def forward_euler(ode:callable,initial_conditions:np.ndarray,t:np.ndarray,args:t
 
 if __name__ == "__main__":
     s=Sphere({"r":0.00001,"t":0.0005})
-    ic={i:0.000001 for i in TOY_SPECIES}
+    ic={i:0.0001 for i in TOY_SPECIES}
     cps=[
-         "vm1",
-         "vm2",
-         "vm3",
-         "vm4",
-         "vm5",
-         "vm6",
-         "vm7",
-         "vm8",
-         "vm9",
-         "vm10",
          "k_t1",
          "k_e1",
          "k_e2",
@@ -868,18 +878,18 @@ if __name__ == "__main__":
                "r101":-1,
                "r102":-1,
                "lipid_density":0.01,
-               "split_volume":0.000001,
+               "split_volume":0.001,
                },
               TOY_REACTIONS,
               TOY_SPECIES,
               s,
               controlled_params=cps,
-              ranges=[[0,100] for i in range(len(cps))],
+              ranges=[[0,1000] for i in range(len(cps))],
               observable_env_states=["S_env","time_env","P_env"],
               initial_conditions=ic,
               grad_updates=1,
                 policy_lr=0.001,
-                value_lr=0.005,
+                value_lr=0.05,
                 clip=0.2
               
               )
@@ -896,7 +906,7 @@ if __name__ == "__main__":
                     controllers={"S_env":S_controller},
                     time_step=0.05)
     # run_episode(env,100)
-    trainer=Trainer(env,32,500,20000,200,"./replication",parallel_framework="ray")
+    trainer=Trainer(env,8,200,20000,200,"./replication",parallel_framework="ray")
     trainer.train()
     
 

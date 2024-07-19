@@ -75,7 +75,7 @@ class CompareDataProcessor:
         
 if __name__ == "__main__":
     data1 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_0.pkl"
-    data2 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_600.pkl"
+    data2 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/replication/data_batch_600.pkl"
     data3 = "/Users/parsaghadermarzi/Desktop/Academics/Projects/Reinforcement_Learning_Modeling/selfreplicator/data_batch_400.pkl"
     d1=BatchDataProcessor(data1,8)
     d2=BatchDataProcessor(data2,8)
